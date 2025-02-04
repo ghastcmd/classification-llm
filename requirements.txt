@@ -3,3 +3,4 @@ langchain-community
 langchain-core
 langchain-chroma
 chromadb
+scikit-learn
