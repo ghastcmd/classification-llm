@@ -1,2 +1,6 @@
 chroma
 venv
+.env
+
+cached.txt
+prompt.txt

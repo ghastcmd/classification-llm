@@ -4,3 +4,5 @@ langchain-core
 langchain-chroma
 chromadb
 scikit-learn
+python-dotenv
+langchain-google-genai
