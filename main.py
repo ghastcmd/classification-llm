@@ -60,15 +60,15 @@ def prepare_prompt(results) -> tuple[str, str, PromptTemplate]:
         prompt_template = """
 You are a classifier for video game development problems. Your task is to analyze a problem
 description the given context, and assign it a classification in the format
-of `group/type` using the provided context without inventing new classes. Do not create notes.
+of group/type using the provided context without inventing new classes. Do not create notes.
 
 ### Instructions:  
 1. Input: A problem description related to video game development and the context of other game
-development problems properly classified with its `group/type`.
-2. Output: Only the `group/type` classification, with **no additional text or explanation**.  
+development problems properly classified with its group/type.
+2. Output: Only the group/type classification, with **no additional text or explanation**.  
 3. Rules:  
 - Classify the problem given in the Task section, **strictly based on the context above**,
-do not use new `group/type` that is not in the context provided bellow.  
+do not use new group/type that is not in the context provided bellow.  
 - Do not invent new groups or types.
 - Prioritize the most specific and relevant classification from the context.
 
@@ -88,22 +88,25 @@ Classify the following problem description using only the context provided above
 {description}
 
 Output only the classification, **without** any explanation or notes or anything,
-just the classification in the format of `group/type`.
+just the classification in the format of group/type.
 """
     else:
         prompt_template = """
+## Section {index}
+
 ### Context:
 
 | description | group/type |
 | ----------- | ---------- |
 {context}
 
-#### group/type choose one of based on the pair of description
+### group/type choose one of based on the pair of description
 
 {suggestions}
 
 ### Task:
-Classify the following problem description using only the context provided above:  
+Classify the following problem description using only the context provided
+in this section:  
 
 {description}
 
@@ -134,6 +137,7 @@ def get_model():
     
     model = ChatGoogleGenerativeAI(
         model='gemini-2.0-pro-exp',
+        temperature=0.1,
     )
     
     
@@ -142,34 +146,37 @@ def get_model():
 
 def aggregate_prompts(arr):
     template = """
-You are a classifier for video game development problems. Your task is to analyze a problem
-description the given context, and assign it a classification in the format
-of `group/type` using the provided context without inventing new classes. Do not create notes.
+You are a classifier for video game development problems. Your task is to,
+for each one of the sections, analyze the problem
+description, the given context, and assign it a classification in the
+format of group/type using the provided context of the section without inventing
+new classes.
 
-### Instructions:  
-1. Input: A problem description related to video game development and the context of other game
-development problems properly classified with its `group/type`.
-2. Output: Only the `group/type` classification, with **no additional text or explanation**.  
+### Instructions for each one of the sections:  
+1. Input: A problem description related to video game development and the
+context of other game development problems properly classified with
+its group/type.
+2. Output: Only the group/type classification, with **no additional text
+or explanation**.  
 3. Rules:  
-- Classify the problem given in the Task section, **strictly based on the context above**,
-do not use new `group/type` that is not in the context provided bellow.  
+- Classify the problem given in the Task section, **strictly based on the
+context of the section**, do not use new group/type that is not in the context
+provided in the section.  
 - Do not invent new groups or types.
-- Prioritize the most specific and relevant classification from the context.
+- Prioritize the most specific and relevant classification from the context of
+the section.
 
 ---
 {all_questions}
 ---
 
-### Task for every section delimited by '---'
+### Task for every one of the sections
 
-For each of the given sections delimited by a line '---', return a
-oneliner corresponding to the group/type classification reasoned by you.
-
-There is a total of {total_prompts} of sections, so there should be a total
-of {total_prompts} oneliner answers.
+For each one of the sections above, return a oneliner
+corresponding to the group/type classification thought by you.
 
 Output only the classification, **without** any explanation or notes or anything,
-just the classification in the format of `group/type`.
+just the classification in the format of group/type.
 """
 
     questions = '\n---\n'.join(arr)
@@ -177,7 +184,6 @@ just the classification in the format of `group/type`.
     prompt = PromptTemplate.from_template(template)
     prompt = prompt.invoke({
         'all_questions': questions,
-        'total_prompts': len(arr),
     })
     
     return prompt
@@ -204,7 +210,7 @@ def main(args):
 
     results = []
 
-    for entry in test_data:
+    for i, entry in enumerate(test_data):
         _, entry = entry
         query = entry['quote']
         
@@ -221,6 +227,7 @@ def main(args):
             'description': query,
             'context': context,
             'suggestions': suggestions,
+            'index': i,
         }
 
         prompt = prompt_template.invoke(prompt_data)
@@ -264,9 +271,15 @@ def main(args):
                 model_str = fp.read()
         model_result_arr = model_str.strip().split('\n')
         print(model_result_arr)
-        for i, res in enumerate([res for res in model_result_arr if res != '---']):
+        
+        def not_trash(in_str):
+            return in_str != '---' and in_str != '' and in_str != '```' and in_str[0] != '#'
+        
+        for i, res in enumerate([res for res in model_result_arr if not_trash(res)]):
             results[i]['result'] = res
     
+    os.remove('./results.txt')
+
     for i, result in enumerate(results):
         print(f"""
             
@@ -299,6 +312,12 @@ prompt len: {result['prompt_len']}
         else:
             print(f"({errors}) acc: {((i + 1) - errors) / (i + 1)}\nMATCH")
             
+        with open('results.txt', 'a+') as fp:
+            res = result['result']
+            true_class = result['group_type']
+            suggestions = result['suggestions']
+            data_to_write = f"{res} | {true_class}\n{suggestions}\n"
+            fp.write(data_to_write)
     
     
     for entry in not_matching:
