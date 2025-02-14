@@ -14,6 +14,9 @@ clean:
 	powershell -c 'rm ./chroma/* -Force -Recurse'
 	touch ./chroma/.gitkeep
 
+mangle:
+	py mangler.py
+
 docker:
 	docker run -d --cpus=1.5 --gpus=all -v ollama:/root/.ollama \
 	-p 11434:11434 --name ollama ollama/ollama:latest
