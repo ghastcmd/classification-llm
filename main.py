@@ -1,6 +1,7 @@
 import argparse
 import time
 import os
+import re
 
 import pandas as pd
 
@@ -23,7 +24,7 @@ def get_embedding_function():
     return OllamaEmbeddings(model='mxbai-embed-large')
 
 def get_dataset_quotes():
-    separated_df = pd.read_csv('./dataset/dataset.csv')[['quote', 'group', 'type']]
+    separated_df = pd.read_csv('./dataset/cleaned-dataset.csv')[['cleaned_text', 'group', 'type']]
     
     separated_df = separated_df.sample(frac=0.07, random_state=123)
     
@@ -42,7 +43,7 @@ def add_to_chroma(db, quotes):
     )
     
     docs = [Document(
-        page_content=quote['quote'],
+        page_content=quote['cleaned_text'],
         metadata={
             'group_type': quote['group_type'],
         },
@@ -137,7 +138,7 @@ def get_model():
     
     model = ChatGoogleGenerativeAI(
         model='gemini-2.0-pro-exp',
-        temperature=0.1,
+        temperature=0.0,
     )
     
     
@@ -212,7 +213,7 @@ def main(args):
 
     for i, entry in enumerate(test_data):
         _, entry = entry
-        query = entry['quote']
+        query = entry['cleaned_text']
         
         similarity_results = db.similarity_search(
             query,
@@ -272,10 +273,26 @@ def main(args):
         model_result_arr = model_str.strip().split('\n')
         print(model_result_arr)
         
-        def not_trash(in_str):
-            return in_str != '---' and in_str != '' and in_str != '```' and in_str[0] != '#'
+        def extract_formatted_string(in_str):
+            matches = re.findall(r'\b[\w-]+/[\w-]+\b', in_str)
+            return matches
         
-        for i, res in enumerate([res for res in model_result_arr if not_trash(res)]):
+        def not_trash(in_str):
+            not_line = in_str != '---'
+            
+            not_empty =  in_str != '' 
+            not_code = in_str != '```'
+            not_section = False
+            if in_str != '':
+                not_section = in_str[0] != '#'
+            
+            match = extract_formatted_string(in_str)
+            not_contain_class = len(match) != 0
+            
+            result = not_line and not_empty and not_code and not_section
+            return result and not_contain_class
+        
+        for i, res in enumerate([extract_formatted_string(res)[0] for res in model_result_arr if not_trash(res)]):
             results[i]['result'] = res
     
     os.remove('./results.txt')

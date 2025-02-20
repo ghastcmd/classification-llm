@@ -10,6 +10,9 @@ cached:
 add:
 	py main.py --add
 
+clean-text:
+	py clean.py
+
 clean:
 	powershell -c 'rm ./chroma/* -Force -Recurse'
 	touch ./chroma/.gitkeep
