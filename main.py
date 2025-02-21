@@ -20,30 +20,45 @@ from dotenv import dotenv_values
 CHROMA_PATH = './chroma'
 args = {}
 
+# DESCRIPTION_COLUMN = 'quote'
+DESCRIPTION_COLUMN = 'cleaned_text'
+
 def get_embedding_function():
     return OllamaEmbeddings(model='mxbai-embed-large')
 
 def get_dataset_quotes():
-    separated_df = pd.read_csv('./dataset/cleaned-dataset.csv')[['cleaned_text', 'group', 'type']]
-    
-    separated_df = separated_df.sample(frac=0.07, random_state=123)
-    
+    separated_df = pd.read_csv('./dataset/cleaned-dataset.csv')[[DESCRIPTION_COLUMN, 'group', 'type']]
     separated_df['group_type'] = separated_df["group"] + '/' + separated_df["type"]
     
-    train, test = train_test_split(separated_df, test_size=0.2, shuffle=True, random_state=42)
+    separated_df = separated_df[separated_df['group_type'] != 'management-feature/security']
+    
+    separated_df = separated_df.groupby(
+        'group_type', group_keys=False
+    ).sample(frac=0.07, random_state=123)
+    
+    # Removing smaller classes
+    counts = separated_df['group_type'].value_counts()
+    to_keep = counts[counts >= 2].index
+    mask = separated_df['group_type'].isin(to_keep)
+    separated_df = separated_df[mask]
+    
+    train, test = train_test_split(
+        separated_df, test_size=0.28, stratify=separated_df['group_type'],
+        shuffle=True, random_state=42
+    )
     
     return train, test
 
 def add_to_chroma(db, quotes):
     text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=800,
-        chunk_overlap=120,
+        chunk_size=700,
+        chunk_overlap=80,
         length_function=len,
         is_separator_regex=False,
     )
     
     docs = [Document(
-        page_content=quote['cleaned_text'],
+        page_content=quote[DESCRIPTION_COLUMN],
         metadata={
             'group_type': quote['group_type'],
         },
@@ -213,11 +228,11 @@ def main(args):
 
     for i, entry in enumerate(test_data):
         _, entry = entry
-        query = entry['cleaned_text']
+        query = entry[DESCRIPTION_COLUMN]
         
         similarity_results = db.similarity_search(
             query,
-            k=10
+            k=8
         )
 
         context, suggestions, prompt_template = prepare_prompt(similarity_results)
@@ -297,6 +312,9 @@ def main(args):
     
     os.remove('./results.txt')
 
+    """===== PROMPT =====
+{result['prompt_txt']}"""
+
     for i, result in enumerate(results):
         print(f"""
             
@@ -304,8 +322,6 @@ def main(args):
 ==================
 
 query: {result['query']}
-===== PROMPT =====
-{result['prompt_txt']}
 ===== RESULT =====
 {result['result']}
 ===== TRUTH =====
