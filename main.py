@@ -20,6 +20,8 @@ from dotenv import dotenv_values
 CHROMA_PATH = './chroma'
 args = {}
 unique_values = []
+unique_groups = []
+group_type_dict = {}
 
 # DESCRIPTION_COLUMN = 'quote'
 DESCRIPTION_COLUMN = 'cleaned_text'
@@ -43,9 +45,14 @@ def get_dataset_quotes():
     mask = separated_df['group_type'].isin(to_keep)
     separated_df = separated_df[mask]
     
-    global unique_values
+    global unique_values, unique_groups
     unique_values = separated_df['group_type'].unique()
+    unique_groups = separated_df['group'].unique()
     
+    for val in unique_values:
+        group, ttype = val.split('/')
+        group_type_dict.setdefault(group, []).append([ttype, f'{group}/{ttype}'])
+        
     train, test = train_test_split(
         separated_df, test_size=0.28, stratify=separated_df['group_type'],
         shuffle=True, random_state=42
@@ -77,7 +84,8 @@ def add_to_chroma(db, quotes):
 
 def aggregate_prompts(arr):
     if args.overall_suggestion:
-        caput = """
+        if not args.segmented:
+            caput = """
 You are a classifier for video game development problems.
 
 Your task is to, for each one of the sections named with the format "## question 0"
@@ -102,7 +110,57 @@ question 1, question 2, and so on.
 
 {total_classes}
 """
-    else:
+        else: # ! is segmented
+            if not args.second: # ! first segmented (group)
+                """If you can't figure out the classification only with the context of the section question 0,
+feel free to classify as what it is most likely to be given the context of question 0 or
+using the classes contained in the section 'classes from the dataset'."""
+
+                caput = """
+You are a classifier for video game development problems.
+
+Your task is to, for each one of the sections named with the format "## question 0"
+(with two hashtag '##', followed by the name 'question' with the enumeration of the section,
+in the given example it is 0, so this corresponds to the first question section), you'll
+classify its description.
+
+So, for instance, if you are analysing question 0, you'll analyse only the context of the
+question 0, and classify it in the format of group using only the context of the 
+section question 0 and with data from the section 'classes from the dataset', without
+inventing new classes or using classes from outside the scope of the section 'question 0'.
+
+Thus, if you want to classify the description of question 0, do not use the context from
+other question sections.
+
+I've given the example of question 0, but this also holds for every other question, like
+question 1, question 2, and so on.
+
+## classes from the dataset
+
+{total_classes}
+"""
+            else: # ! is second of segmented (type -> group/type)
+                caput = """
+You are a classifier for video game development problems.
+
+Your task is to, for each one of the sections named with the format "## question 0"
+(with two hashtag '##', followed by the name 'question' with the enumeration of the section,
+in the given example it is 0, so this corresponds to the first question section), you'll
+classify its description.
+
+So, for instance, if you are analysing question 0, you'll analyse only the context of the
+question 0, and classify it in the format of group/type using only the context of the 
+section question 0 without inventing new classes or using classes from outside the scope
+of the section 'question 0'.
+
+Thus, if you want to classify the description of question 0, do not use the context from
+other question sections.
+
+I've given the example of question 0, but this also holds for every other question, like
+question 1, question 2, and so on.
+"""
+
+    else: # ! without overall suggestions
         caput = """
 You are a classifier for video game development problems.
 
@@ -124,8 +182,8 @@ I've given the example of question 0, but this also holds for every other questi
 question 1, question 2, and so on.
 """
 
-    template = caput + """
-
+    if not args.segmented:
+        everything_else = """
 ## Instructions for each one of the sections:  
 1. Input: A problem description related to video game development and the
 context of other game development problems properly classified with
@@ -151,16 +209,68 @@ corresponding to the group/type classification thought by you.
 
 Output only the classification, **without** any explanation or notes or anything,
 just the classification in the format of group/type."""
-        
+
+    else: # ! is segmented
+        if not args.second: # ! is **first** of segmented
+            everything_else = """
+## Instructions for each one of the sections:  
+1. Input: A problem description related to video game development.
+2. Output: A header with the enumeration of the section, and the group
+classification, with **no additional text or explanation**.
+3. Rules:
+- Prioritize the most specific and relevant classification of the section.
+
+---
+{all_questions}
+---
+
+## Task for every one of the sections
+
+For each one of the sections above, return a oneliner
+corresponding to the group classification thought by you.
+
+Output only the classification, **without** any explanation or notes or anything,
+just the classification in the format of group."""
+
+        else: # ! is second of segmented
+            everything_else = """
+## Instructions for each one of the sections:  
+1. Input: A problem description related to video game development.
+2. Output: A header with the enumeration of the section, and the group/type
+classification, with **no additional text or explanation**.
+3. Rules:
+- Prioritize the most specific and relevant classification of the section.
+
+---
+{all_questions}
+---
+
+## Task for every one of the sections
+
+For each one of the sections above, return a oneliner
+corresponding to the group/type classification thought by you.
+
+Output only the classification, **without** any explanation or notes or anything,
+just the classification in the format of group/type."""
+
+    template = f"""{caput}
+
+{everything_else}"""
 
     questions = '\n---\n'.join(arr)
     
     prompt = PromptTemplate.from_template(template)
-    if args.overall_suggestion:
-        prompt = prompt.invoke({
-            'all_questions': questions,
-            'total_classes': ', '.join(unique_values),
-        })
+    if args.overall_suggestion and not args.second:
+        if not args.segmented:
+            prompt = prompt.invoke({
+                'all_questions': questions,
+                'total_classes': ', '.join(unique_values),
+            })
+        else:
+            prompt = prompt.invoke({
+                'all_questions': questions,
+                'total_classes': ', '.join(unique_groups),
+            })
     else:
         prompt = prompt.invoke({
             'all_questions': questions,
@@ -219,7 +329,8 @@ in this section:
 
 """
         else:
-            prompt_template = """
+            if not args.segmented:
+                prompt_template = """
 ## question {index}
 
 ### Task:
@@ -229,6 +340,34 @@ in this section:
 {description}
 
 """
+            else:
+                if not args.second:
+                    prompt_template = """
+## question {index}
+
+### Task:
+Classify the following problem description using only the context provided
+in this section:
+
+{description}
+
+"""
+                else:
+                    prompt_template = """
+## question {index}
+
+| type | group/type |
+| ---- | ---------- |
+{type_2_group}
+
+### Task:
+Classify the following problem description using only the context provided
+in this section:
+
+{description}
+
+"""
+                    
         
     
     prompt = PromptTemplate.from_template(prompt_template)
@@ -264,6 +403,36 @@ def get_model():
     
     return model
 
+def get_results_form(model_str: str, regex_format: str):
+    model_result_arr = model_str.strip().split('\n')
+    print(model_result_arr)
+    
+    def extract_formatted_string(in_str):
+        matches = re.findall(regex_format, in_str)
+        return matches
+    
+    def not_trash(in_str):
+        not_line = in_str != '---'
+        
+        not_empty =  in_str != '' 
+        not_code = in_str != '```'
+        not_section = False
+        if in_str != '':
+            not_section = in_str[0] != '#'
+        
+        match = extract_formatted_string(in_str)
+        not_contain_class = len(match) != 0
+        
+        result = not_line and not_empty and not_code and not_section
+        return result and not_contain_class
+    
+    return [extract_formatted_string(res)[0] for res in model_result_arr if not_trash(res)]
+
+def get_type_table(group: str):
+    global group_type_dict
+    table_values = '\n'.join([f'| {entry[0]} | {entry[1]} |' for entry in group_type_dict[group]])
+    return table_values
+
 def main(args):
     df_train, df_test = get_dataset_quotes()
     
@@ -287,9 +456,19 @@ def main(args):
 
     results = []
 
+    if args.second:
+        previous_model_out = ''
+        with open('to_second.txt', 'r') as fp:
+            previous_model_out = fp.read()
+        
+        groups = get_results_form(previous_model_out, r'\b[\w-]+\b')
+
     for i, entry in enumerate(test_data):
         _, entry = entry
         query = entry[DESCRIPTION_COLUMN]
+        
+        if args.second:
+            group_entry = groups[i]
         
         similarity_results = []
         
@@ -311,11 +490,26 @@ def main(args):
                 'index': i,
             }
         else:
-            prompt_data = {
-                'description': query,
-                'suggestions': suggestions,
-                'index': i,
-            }
+            if args.segmented and args.second:
+                prompt_data = {
+                    'description': query,
+                    'suggestions': suggestions,
+                    'type_2_group': get_type_table(group_entry),
+                    'index': i,
+                }
+            else:
+                if not args.segmented:
+                    prompt_data = {
+                        'description': query,
+                        'suggestions': suggestions,
+                        'index': i,
+                    }
+                else:
+                    prompt_data = {
+                        'description': query,
+                        'index': i,
+                    }
+                    
 
         prompt = prompt_template.invoke(prompt_data)
         
@@ -327,6 +521,7 @@ def main(args):
             'query': query,
             'prompt_txt': prompt_txt,
             'group_type': group_type,
+            'group': entry['group'],
             'prompt_len': prompt_len,
             'suggestions': suggestions,
             'context': context,
@@ -353,38 +548,23 @@ def main(args):
             model_str = model_result.content
             with open('cached.txt', 'w+') as fp:
                 fp.write(model_str)
+            if not args.second:
+                with open('to_second.txt', 'w+') as fp:
+                    fp.write(model_str)
         else:
             with open('cached.txt', 'r') as fp:
                 model_str = fp.read()
-        model_result_arr = model_str.strip().split('\n')
-        print(model_result_arr)
-        
-        def extract_formatted_string(in_str):
-            matches = re.findall(r'\b[\w-]+/[\w-]+\b', in_str)
-            return matches
-        
-        def not_trash(in_str):
-            not_line = in_str != '---'
-            
-            not_empty =  in_str != '' 
-            not_code = in_str != '```'
-            not_section = False
-            if in_str != '':
-                not_section = in_str[0] != '#'
-            
-            match = extract_formatted_string(in_str)
-            not_contain_class = len(match) != 0
-            
-            result = not_line and not_empty and not_code and not_section
-            return result and not_contain_class
-        
-        for i, res in enumerate([extract_formatted_string(res)[0] for res in model_result_arr if not_trash(res)]):
-            results[i]['result'] = res
-    
-    os.remove('./results.txt')
 
-    """===== PROMPT =====
-{result['prompt_txt']}"""
+        if not args.segmented or args.second:
+            for i, res in enumerate(get_results_form(model_str, r'\b[\w-]+/[\w-]+\b')):
+                results[i]['result'] = res
+        else:
+            for i, res in enumerate(get_results_form(model_str, r'\b[\w-]+\b')):
+                results[i]['result'] = res
+    
+    
+    if os.path.exists('./results.txt'):
+        os.remove('./results.txt')
 
     for i, result in enumerate(results):
         print(f"""
@@ -401,8 +581,13 @@ query: {result['query']}
 prompt len: {result['prompt_len']}
 {i+1}/{len_test_data}""")
 
+        def get_comparison_safe():
+            if not args.segmented or args.second:
+                return result['group_type']
+            else:
+                return result['group']
         
-        if result['result'].strip() != result['group_type']:
+        if result['result'].strip() != get_comparison_safe():
             errors += 1
             print(f"({errors}) acc: {((i + 1) - errors) / (i + 1)}\nNOT MATCH")
             
@@ -456,7 +641,8 @@ def arg_parser():
     parser.add_argument('--cached', action='store_true')
     parser.add_argument('--cleaned', action='store_true')
     parser.add_argument('--overall_suggestion', action='store_true')
-    parser.add_argument('--simultaneous', action='store_true')
+    parser.add_argument('--segmented', action='store_true')
+    parser.add_argument('--second', action='store_true')
     parser.add_argument('--without_few_shot', action='store_true')
     
     global args
@@ -486,8 +672,10 @@ def arg_parser():
             version_values.append('not cleaned')
         if args.overall_suggestion:
             version_values.append('overall_suggestion')
-        if args.simultaneous:
-            version_values.append('simultaneous')
+        if args.segmented:
+            version_values.append('segmented')
+        if args.second:
+            version_values.append('second segmented')
         if args.without_few_shot:
             version_values.append('without_few_shot')
 
