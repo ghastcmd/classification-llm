@@ -75,6 +75,100 @@ def add_to_chroma(db, quotes):
     
     return db
 
+def aggregate_prompts(arr):
+    if args.overall_suggestion:
+        caput = """
+You are a classifier for video game development problems.
+
+Your task is to, for each one of the sections named with the format "## question 0"
+(with two hashtag '##', followed by the name 'question' with the enumeration of the section,
+in the given example it is 0, so this corresponds to the first question section), you'll
+classify its description.
+
+So, for instance, if you are analysing question 0, you'll analyse only the context of the
+question 0, and classify it in the format of group/type using only the context of the 
+section question 0 without inventing new classes or using classes from outside the scope
+of the section 'question 0'. Thus, if you want to classify the description of question 0,
+do not use the context from other question sections.
+
+If you can't figure out the classification only with the context of the section question 0,
+feel free to classify as what it is most likely to be given the context of question 0 or
+using the classes contained in the section 'classes from the dataset'.
+
+I've given the example of question 0, but this also holds for every other question, like
+question 1, question 2, and so on.
+
+## classes from the dataset
+
+{total_classes}
+"""
+    else:
+        caput = """
+You are a classifier for video game development problems.
+
+Your task is to, for each one of the sections named with the format "## question 0"
+(with two hashtag '##', followed by the name 'question' with the enumeration of the section,
+in the given example it is 0, so this corresponds to the first question section), you'll
+classify its description.
+
+So, for instance, if you are analysing question 0, you'll analyse only the context of the
+question 0, and classify it in the format of group/type using only the context of the 
+section question 0 without inventing new classes or using classes from outside the scope
+of the section 'question 0'. Thus, if you want to classify the description of question 0,
+do not use the context from other question sections.
+
+If you can't figure out the classification only with the context of the section question 0,
+feel free to classify as what it is most likely to be given the context of question 0.
+
+I've given the example of question 0, but this also holds for every other question, like
+question 1, question 2, and so on.
+"""
+
+    template = caput + """
+
+## Instructions for each one of the sections:  
+1. Input: A problem description related to video game development and the
+context of other game development problems properly classified with
+its group/type.
+2. Output: A header with the enumeration of the section, and the group/type
+classification, with **no additional text or explanation**.
+3. Rules:  
+- Classify the problem given in the Task section, **strictly based on the
+context of the section**, do not use new group/type that is not in the context
+provided in the section.  
+- Do not invent new groups or types.
+- Prioritize the most specific and relevant classification from the context of
+the section.
+
+---
+{all_questions}
+---
+
+## Task for every one of the sections
+
+For each one of the sections above, return a oneliner
+corresponding to the group/type classification thought by you.
+
+Output only the classification, **without** any explanation or notes or anything,
+just the classification in the format of group/type."""
+        
+
+    questions = '\n---\n'.join(arr)
+    
+    prompt = PromptTemplate.from_template(template)
+    if args.overall_suggestion:
+        prompt = prompt.invoke({
+            'all_questions': questions,
+            'total_classes': ', '.join(unique_values),
+        })
+    else:
+        prompt = prompt.invoke({
+            'all_questions': questions,
+        })
+        
+    
+    return prompt
+
 def prepare_prompt(results) -> tuple[str, str, PromptTemplate]:
     if args.small:
         prompt_template = """
@@ -107,8 +201,9 @@ Output only the classification, **without** any explanation or notes or anything
 just the classification in the format of group/type.
 """
     else:
-        prompt_template = """
-## section {index}
+        if not args.without_few_shot:
+            prompt_template = """
+## question {index}
 
 ### Context:
 
@@ -123,14 +218,28 @@ in this section:
 {description}
 
 """
+        else:
+            prompt_template = """
+## question {index}
+
+### Task:
+Classify the following problem description using only the context provided
+in this section:  
+
+{description}
+
+"""
         
     
     prompt = PromptTemplate.from_template(prompt_template)
     
-    context = '\n'.join([
-        f'| {result.page_content} | {result.metadata["group_type"]} |'
-        for result in results
-    ])
+    context = ''
+    
+    if not args.without_few_shot:
+        context = '\n'.join([
+            f'| {result.page_content} | {result.metadata["group_type"]} |'
+            for result in results
+        ])
     
     suggestions = ', '.join([result.metadata['group_type'] for result in results])
     
@@ -154,88 +263,6 @@ def get_model():
     
     
     return model
-
-
-def aggregate_prompts(arr):
-    if args.overall_suggestion:
-        caput = """
-You are a classifier for video game development problems. Your task is to,
-for each one of the sections, analyze the problem description, the given context
-of the section, and assign it a classification in the format of group/type
-using the provided context of the section and studying all the classes given
-in the section 'Total classes', without inventing new classes outside both
-the scope of the given section and the section 'Total Classes'.
-
-### Total Classes
-
-{total_classes}
-"""
-    else:
-        caput = """
-You are a classifier for video game development problems.
-
-Your task is to, for each one of the sections named with the format "## section 0"
-(with two hashtag '##', followed by the name 'section' with the enumeration of the section,
-in the given example it is 0, so this corresponds to the first section), you'll classify
-its description.
-
-So, for instance, if you are analysing section 0, you'll analyse only the context of the
-section 0, and classify it in the format of group/type using only the context of the section 0
-without inventing new classes or using classes from outside the scope of the section 0.
-Thus, if you want to classify the description of section 0, do not use the context
-from other sections.
-
-If you can't figure out the classification only with the context of the section 0,
-feel free to classify as what it is most likely to be given the context of section 0.
-
-I've given the example of section 0, but this also holds for every other section, like
-section 1, section 2, and on and on.
-"""
-
-    template = caput + """
-
-### Instructions for each one of the sections:  
-1. Input: A problem description related to video game development and the
-context of other game development problems properly classified with
-its group/type.
-2. Output: A header with the enumeration of the section, and the group/type
-classification, with **no additional text or explanation**.
-3. Rules:  
-- Classify the problem given in the Task section, **strictly based on the
-context of the section**, do not use new group/type that is not in the context
-provided in the section.  
-- Do not invent new groups or types.
-- Prioritize the most specific and relevant classification from the context of
-the section.
-
----
-{all_questions}
----
-
-### Task for every one of the sections
-
-For each one of the sections above, return a oneliner
-corresponding to the group/type classification thought by you.
-
-Output only the classification, **without** any explanation or notes or anything,
-just the classification in the format of group/type."""
-        
-
-    questions = '\n---\n'.join(arr)
-    
-    prompt = PromptTemplate.from_template(template)
-    if args.overall_suggestion:
-        prompt = prompt.invoke({
-            'all_questions': questions,
-            'total_classes': ', '.join(unique_values),
-        })
-    else:
-        prompt = prompt.invoke({
-            'all_questions': questions,
-        })
-        
-    
-    return prompt
 
 def main(args):
     df_train, df_test = get_dataset_quotes()
@@ -264,21 +291,31 @@ def main(args):
         _, entry = entry
         query = entry[DESCRIPTION_COLUMN]
         
-        similarity_results = db.similarity_search(
-            query,
-            k=8
-        )
+        similarity_results = []
+        
+        if not args.without_few_shot:
+            similarity_results = db.similarity_search(
+                query,
+                k=8
+            )
 
         context, suggestions, prompt_template = prepare_prompt(similarity_results)
         
         # print(f'\n\ncontext\n\n{context}\n\n====')
 
-        prompt_data = {
-            'description': query,
-            'context': context,
-            'suggestions': suggestions,
-            'index': i,
-        }
+        if not args.without_few_shot:
+            prompt_data = {
+                'description': query,
+                'context': context,
+                'suggestions': suggestions,
+                'index': i,
+            }
+        else:
+            prompt_data = {
+                'description': query,
+                'suggestions': suggestions,
+                'index': i,
+            }
 
         prompt = prompt_template.invoke(prompt_data)
         
@@ -420,6 +457,7 @@ def arg_parser():
     parser.add_argument('--cleaned', action='store_true')
     parser.add_argument('--overall_suggestion', action='store_true')
     parser.add_argument('--simultaneous', action='store_true')
+    parser.add_argument('--without_few_shot', action='store_true')
     
     global args
     args = parser.parse_args()
@@ -429,6 +467,10 @@ def arg_parser():
         DESCRIPTION_COLUMN = 'cleaned_text'
     else:
         DESCRIPTION_COLUMN = 'quote'
+
+    if args.without_few_shot and not args.overall_suggestion:
+        print('Incompatible argument options: |--without_few_shot| and |--overall_suggestion|')
+        exit(1)
 
     with open('version.txt', 'w+') as fp:
         version_values = []
@@ -446,6 +488,8 @@ def arg_parser():
             version_values.append('overall_suggestion')
         if args.simultaneous:
             version_values.append('simultaneous')
+        if args.without_few_shot:
+            version_values.append('without_few_shot')
 
         fp.write(' | '.join(version_values))
 
