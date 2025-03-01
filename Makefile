@@ -1,6 +1,9 @@
 run:
 	py main.py
 
+suggestion:
+	py main.py --overall_suggestion
+
 small:
 	py main.py --small
 

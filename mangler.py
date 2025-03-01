@@ -19,6 +19,8 @@ def main():
     copy2folder(foldername, './cached.txt')
     copy2folder(foldername, './prompt.txt')
     copy2folder(foldername, './results.txt')
+    copy2folder(foldername, './version.txt')
+    copy2folder(foldername, './result_printout.txt')
     
 if __name__ == '__main__':
     main()

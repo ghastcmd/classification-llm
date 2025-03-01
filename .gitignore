@@ -5,3 +5,5 @@ venv
 cached.txt
 prompt.txt
 results.txt
+version.txt
+result_printout.txt

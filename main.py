@@ -19,6 +19,7 @@ from dotenv import dotenv_values
 
 CHROMA_PATH = './chroma'
 args = {}
+unique_values = []
 
 # DESCRIPTION_COLUMN = 'quote'
 DESCRIPTION_COLUMN = 'cleaned_text'
@@ -41,6 +42,9 @@ def get_dataset_quotes():
     to_keep = counts[counts >= 2].index
     mask = separated_df['group_type'].isin(to_keep)
     separated_df = separated_df[mask]
+    
+    global unique_values
+    unique_values = separated_df['group_type'].unique()
     
     train, test = train_test_split(
         separated_df, test_size=0.28, stratify=separated_df['group_type'],
@@ -93,10 +97,6 @@ do not use new group/type that is not in the context provided bellow.
 | description | group/type |
 | ----------- | ---------- |
 {context}
-
-#### group/type choose one of based on the pair of description
-
-{suggestions}
 
 ### Task:
 Classify the following problem description using only the context provided above:  
@@ -161,12 +161,28 @@ def get_model():
 
 
 def aggregate_prompts(arr):
-    template = """
+    if args.overall_suggestion:
+        caput = """
+You are a classifier for video game development problems. Your task is to,
+for each one of the sections, analyze the problem description, the given context,
+and assign it a classification in the format of group/type using the provided
+context of the section and studying all the classes given in the section
+'Total classes', without inventing new classes.
+
+### Total Classes
+
+{total_classes}
+"""
+    else:
+        caput = """
 You are a classifier for video game development problems. Your task is to,
 for each one of the sections, analyze the problem
 description, the given context, and assign it a classification in the
 format of group/type using the provided context of the section without inventing
 new classes.
+"""
+    
+    template = caput + """
 
 ### Instructions for each one of the sections:  
 1. Input: A problem description related to video game development and the
@@ -192,15 +208,22 @@ For each one of the sections above, return a oneliner
 corresponding to the group/type classification thought by you.
 
 Output only the classification, **without** any explanation or notes or anything,
-just the classification in the format of group/type.
-"""
+just the classification in the format of group/type."""
+        
 
     questions = '\n---\n'.join(arr)
     
     prompt = PromptTemplate.from_template(template)
-    prompt = prompt.invoke({
-        'all_questions': questions,
-    })
+    if args.overall_suggestion:
+        prompt = prompt.invoke({
+            'all_questions': questions,
+            'total_classes': ', '.join(unique_values),
+        })
+    else:
+        prompt = prompt.invoke({
+            'all_questions': questions,
+        })
+        
     
     return prompt
 
@@ -208,6 +231,7 @@ def main(args):
     df_train, df_test = get_dataset_quotes()
     
     db = Chroma(
+        collection_name=DESCRIPTION_COLUMN,
         persist_directory=CHROMA_PATH,
         embedding_function=get_embedding_function()
     )
@@ -349,7 +373,10 @@ prompt len: {result['prompt_len']}
             res = result['result']
             true_class = result['group_type']
             suggestions = result['suggestions']
-            data_to_write = f"{res} | {true_class}\n{suggestions}\n"
+            suggestions_split = ''.join(suggestions.split(',')).split(' ')
+            res_in_sug = res in suggestions_split
+            true_in_sug = true_class in suggestions_split
+            data_to_write = f"{res} | {true_class} | res {res_in_sug} | true {true_in_sug}\n\n{suggestions}\n\n"
             fp.write(data_to_write)
     
     
@@ -361,21 +388,57 @@ prompt len: {result['prompt_len']}
         print(entry["suggestions"])
 
     accuracy = (len(df_test) - len(not_matching)) / len(df_test)
-    print(f"""
+    result_printout = f"""
           
           Total number of tests: {len(df_test)}
           Total number of errors: {len(not_matching)}
           Accuracy: {accuracy}
-    """)
+    """
+    
+    print(result_printout)
+    with open('result_printout.txt', 'w+') as fp:
+        fp.write(result_printout)
 
     # testing_consistency(chain, query, context, ollama_result)
-    
 
-if __name__ == '__main__':
+def arg_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument('--add', action='store_true')
     parser.add_argument('--small', action='store_true')
     parser.add_argument('--cached', action='store_true')
+    parser.add_argument('--cleaned', action='store_true')
+    parser.add_argument('--overall_suggestion', action='store_true')
+    parser.add_argument('--simultaneous', action='store_true')
+    
+    global args
     args = parser.parse_args()
+    
+    global DESCRIPTION_COLUMN
+    if args.cleaned:
+        DESCRIPTION_COLUMN = 'cleaned_text'
+    else:
+        DESCRIPTION_COLUMN = 'quote'
+
+    with open('version.txt', 'w+') as fp:
+        version_values = []
+        if args.add:
+            version_values.append('add')
+        if args.small:
+            version_values.append('small')
+        if args.cached:
+            version_values.append('cached')
+        if args.cleaned:
+            version_values.append('cleaned')
+        else:
+            version_values.append('not cleaned')
+        if args.overall_suggestion:
+            version_values.append('overall_suggestion')
+        if args.simultaneous:
+            version_values.append('simultaneous')
+
+        fp.write(' | '.join(version_values))
+
+if __name__ == '__main__':
+    arg_parser()    
     
     main(args)
