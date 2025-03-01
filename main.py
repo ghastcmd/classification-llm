@@ -108,17 +108,13 @@ just the classification in the format of group/type.
 """
     else:
         prompt_template = """
-## Section {index}
+## section {index}
 
 ### Context:
 
 | description | group/type |
 | ----------- | ---------- |
 {context}
-
-### group/type choose one of based on the pair of description
-
-{suggestions}
 
 ### Task:
 Classify the following problem description using only the context provided
@@ -164,10 +160,11 @@ def aggregate_prompts(arr):
     if args.overall_suggestion:
         caput = """
 You are a classifier for video game development problems. Your task is to,
-for each one of the sections, analyze the problem description, the given context,
-and assign it a classification in the format of group/type using the provided
-context of the section and studying all the classes given in the section
-'Total classes', without inventing new classes.
+for each one of the sections, analyze the problem description, the given context
+of the section, and assign it a classification in the format of group/type
+using the provided context of the section and studying all the classes given
+in the section 'Total classes', without inventing new classes outside both
+the scope of the given section and the section 'Total Classes'.
 
 ### Total Classes
 
@@ -175,21 +172,34 @@ context of the section and studying all the classes given in the section
 """
     else:
         caput = """
-You are a classifier for video game development problems. Your task is to,
-for each one of the sections, analyze the problem
-description, the given context, and assign it a classification in the
-format of group/type using the provided context of the section without inventing
-new classes.
+You are a classifier for video game development problems.
+
+Your task is to, for each one of the sections named with the format "## section 0"
+(with two hashtag '##', followed by the name 'section' with the enumeration of the section,
+in the given example it is 0, so this corresponds to the first section), you'll classify
+its description.
+
+So, for instance, if you are analysing section 0, you'll analyse only the context of the
+section 0, and classify it in the format of group/type using only the context of the section 0
+without inventing new classes or using classes from outside the scope of the section 0.
+Thus, if you want to classify the description of section 0, do not use the context
+from other sections.
+
+If you can't figure out the classification only with the context of the section 0,
+feel free to classify as what it is most likely to be given the context of section 0.
+
+I've given the example of section 0, but this also holds for every other section, like
+section 1, section 2, and on and on.
 """
-    
+
     template = caput + """
 
 ### Instructions for each one of the sections:  
 1. Input: A problem description related to video game development and the
 context of other game development problems properly classified with
 its group/type.
-2. Output: Only the group/type classification, with **no additional text
-or explanation**.  
+2. Output: A header with the enumeration of the section, and the group/type
+classification, with **no additional text or explanation**.
 3. Rules:  
 - Classify the problem given in the Task section, **strictly based on the
 context of the section**, do not use new group/type that is not in the context
@@ -376,7 +386,8 @@ prompt len: {result['prompt_len']}
             suggestions_split = ''.join(suggestions.split(',')).split(' ')
             res_in_sug = res in suggestions_split
             true_in_sug = true_class in suggestions_split
-            data_to_write = f"{res} | {true_class} | res {res_in_sug} | true {true_in_sug}\n\n{suggestions}\n\n"
+            correct = res == true_class
+            data_to_write = f"{res} | {true_class} | res {res_in_sug} | orig {true_in_sug} | c {correct}\n\n{suggestions}\n\n"
             fp.write(data_to_write)
     
     

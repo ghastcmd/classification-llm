@@ -20,6 +20,9 @@ clean:
 	powershell -c 'rm ./chroma/* -Force -Recurse'
 	touch ./chroma/.gitkeep
 
+clean-mangle:
+	powershell -c 'rm ./mangles/mangle* -Force -Recurse'
+
 mangle:
 	py mangler.py
 
