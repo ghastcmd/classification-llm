@@ -82,10 +82,91 @@ def add_to_chroma(db, quotes):
     
     return db
 
+ALL_CLASSES_DESCRIPTION = """
+| Group | Type | Description of the problem |
+| production | design | Any problem regarding the design of the game, like balancing the gameplay. Not a technical detail. |
+| | documentation | Not planning the game beforehand, not documenting the code, artifacts or game plan. |
+| | tools | Any problem with tools like engines, APIs, development kits, third-party software, etc. |
+| | technical | Problems with the team code/assets infrastructure. |
+| | testing | Any problem regarding the testing. |
+| | bugs | When there are too many bugs in the game/engine, any failure in the game design or technical issues. |
+| | prototyping | Lack of or no prototyping phase nor validation of the gameplay/feature. |
+| management | unrealistic-scope | Planning too many features that end up impossible to implement it in a reasonable time. |
+| | feature-creep | Adding unplanned new features to the game during its implementation. |
+| | cutting-features | Cutting features previously planned because of other factor like short deadlines. |
+| | delays | Problems regarding any delay in the production. |
+| | crunch-time | When developers continuously spent extra hours working in the project. |
+| | communication | Problems regarding communication with any stakeholder. |
+| | team |  Problems in setting up the team, loss of professionals during the development or outsourcing. |
+| | over-budget | Project cost more money than expected. |
+| | multiple-projects | When there is more than one project being developed at the same time. |
+| | planning | Problems involving too much time planing/scheduling or the lack of it. |
+| | security | Problems regarding leaked assets. |
+| business | marketing | Problems regarding marketing/advertising |
+| | monetization | Problems with the process used to generate revenue from a video game product.|
+"""
+
+ALL_CLASSES_DESCRIPTION_2 = """
+| group/type | description of the class |
+| production/design | Any problem regarding the design of the game, like balancing the gameplay. Not a technical detail. |
+| production/documentation | Not planning the game beforehand, not documenting the code, artifacts or game plan. |
+| production/tools | Any problem with tools like engines, APIs, development kits, third-party software, etc. |
+| production/technical | Problems with the team code/assets infrastructure. |
+| production/testing | Any problem regarding the testing. |
+| production/bugs | When there are too many bugs in the game/engine, any failure in the game design or technical issues. |
+| production/prototyping | Lack of or no prototyping phase nor validation of the gameplay/feature. |
+| management/unrealistic-scope | Planning too many features that end up impossible to implement it in a reasonable time. |
+| management/feature-creep | Adding unplanned new features to the game during its implementation. |
+| management/cutting-features | Cutting features previously planned because of other factor like short deadlines. |
+| management/delays | Problems regarding any delay in the production. |
+| management/crunch-time | When developers continuously spent extra hours working in the project. |
+| management/communication | Problems regarding communication with any stakeholder. |
+| management/team |  Problems in setting up the team, loss of professionals during the development or outsourcing. |
+| management/over-budget | Project cost more money than expected. |
+| management/multiple-projects | When there is more than one project being developed at the same time. |
+| management/planning | Problems involving too much time planing/scheduling or the lack of it. |
+| management/security | Problems regarding leaked assets. |
+| business/marketing | Problems regarding marketing/advertising |
+| business/monetization | Problems with the process used to generate revenue from a video game product.|
+"""
+
 def aggregate_prompts(arr):
     if args.overall_suggestion:
         if not args.segmented:
-            caput = """
+            
+            if args.description:
+                caput = """
+You are a classifier for video game development problems.
+
+Your task is to, for each one of the sections named with the format "## question 0"
+(with two hashtag '##', followed by the name 'question' with the enumeration of the section,
+in the given example it is 0, so this corresponds to the first question section), you'll
+classify its description.
+
+So, for instance, if you are analysing question 0, you'll analyse only the context of the
+question 0, and classify it in the format of group/type using only the context of the 
+section question 0 and the classes from the section 'classes from the dataset',
+without inventing new classes or using classes from outside the scope of the section 'question 0',
+or the section 'classes from the dataset'. Thus, if you want to classify the description of
+question 0, do not use the context from other question sections.
+
+If you can't figure out the classification only with the context of the section question 0,
+feel free to classify as what it is most likely to be given the context of question 0 or
+using the classes contained in the section 'classes from the dataset'.
+
+The section 'classes from the dataset' contains a table of which the first column is the class
+and the second column is the description of said class, thus, each class have its description
+and you must analyse the description of the classes to best classify the question description.
+
+I've given the example of question 0, but this also holds for every other question, like
+question 1, question 2, and so on.
+
+## classes from the dataset
+
+{total_classes}
+    """
+            else:
+                caput = """
 You are a classifier for video game development problems.
 
 Your task is to, for each one of the sections named with the format "## question 0"
@@ -109,13 +190,8 @@ question 1, question 2, and so on.
 ## classes from the dataset
 
 {total_classes}
-"""
-        else: # ! is segmented
-            if not args.second: # ! first segmented (group)
-                """If you can't figure out the classification only with the context of the section question 0,
-feel free to classify as what it is most likely to be given the context of question 0 or
-using the classes contained in the section 'classes from the dataset'."""
-
+    """
+        elif not args.second: # ! first segmented (group)
                 caput = """
 You are a classifier for video game development problems.
 
@@ -139,7 +215,7 @@ question 1, question 2, and so on.
 
 {total_classes}
 """
-            else: # ! is second of segmented (type -> group/type)
+        else: # ! is second of segmented (type -> group/type)
                 caput = """
 You are a classifier for video game development problems.
 
@@ -182,6 +258,9 @@ I've given the example of question 0, but this also holds for every other questi
 question 1, question 2, and so on.
 """
 
+
+
+
     if not args.segmented:
         everything_else = """
 ## Instructions for each one of the sections:  
@@ -210,8 +289,7 @@ corresponding to the group/type classification thought by you.
 Output only the classification, **without** any explanation or notes or anything,
 just the classification in the format of group/type."""
 
-    else: # ! is segmented
-        if not args.second: # ! is **first** of segmented
+    elif not args.second: # ! is **first** of segmented
             everything_else = """
 ## Instructions for each one of the sections:  
 1. Input: A problem description related to video game development.
@@ -232,7 +310,7 @@ corresponding to the group classification thought by you.
 Output only the classification, **without** any explanation or notes or anything,
 just the classification in the format of group."""
 
-        else: # ! is second of segmented
+    else: # ! is second of segmented
             everything_else = """
 ## Instructions for each one of the sections:  
 1. Input: A problem description related to video game development.
@@ -262,10 +340,16 @@ just the classification in the format of group/type."""
     prompt = PromptTemplate.from_template(template)
     if args.overall_suggestion and not args.second:
         if not args.segmented:
-            prompt = prompt.invoke({
-                'all_questions': questions,
-                'total_classes': ', '.join(unique_values),
-            })
+            if args.description:
+                prompt = prompt.invoke({
+                    'all_questions': questions,
+                    'total_classes': ALL_CLASSES_DESCRIPTION_2,
+                })
+            else:
+                prompt = prompt.invoke({
+                    'all_questions': questions,
+                    'total_classes': ', '.join(unique_values),
+                })
         else:
             prompt = prompt.invoke({
                 'all_questions': questions,
@@ -644,6 +728,7 @@ def arg_parser():
     parser.add_argument('--segmented', action='store_true')
     parser.add_argument('--second', action='store_true')
     parser.add_argument('--without_few_shot', action='store_true')
+    parser.add_argument('--description', action='store_true')
     
     global args
     args = parser.parse_args()
@@ -678,6 +763,8 @@ def arg_parser():
             version_values.append('second segmented')
         if args.without_few_shot:
             version_values.append('without_few_shot')
+        if args.description:
+            version_values.append('description')
 
         fp.write(' | '.join(version_values))
 
