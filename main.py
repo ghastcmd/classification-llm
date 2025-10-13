@@ -17,6 +17,9 @@ from langchain_ollama.llms import OllamaLLM
 from langchain_google_genai import ChatGoogleGenerativeAI
 from dotenv import dotenv_values
 
+import sys
+sys.stdout.reconfigure(encoding='utf-8')
+
 CHROMA_PATH = './chroma'
 args = {}
 unique_values = []
@@ -33,11 +36,16 @@ def get_dataset_quotes():
     separated_df = pd.read_csv('./dataset/cleaned-dataset.csv')[[DESCRIPTION_COLUMN, 'group', 'type']]
     separated_df['group_type'] = separated_df["group"] + '/' + separated_df["type"]
     
-    separated_df = separated_df[separated_df['group_type'] != 'management-feature/security']
+    # separated_df = separated_df[separated_df['group_type'] != 'management-feature/security']
     
-    separated_df = separated_df.groupby(
-        'group_type', group_keys=False
-    ).sample(frac=0.07, random_state=123)
+    if args.whole_test:
+        separated_df = separated_df.groupby(
+            'group_type', group_keys=False
+        ).sample(frac=0.88, random_state=123)
+    else:
+        separated_df = separated_df.groupby(
+            'group_type', group_keys=False
+        ).sample(frac=0.07, random_state=123)
     
     # Removing smaller classes
     counts = separated_df['group_type'].value_counts()
@@ -52,12 +60,20 @@ def get_dataset_quotes():
     for val in unique_values:
         group, ttype = val.split('/')
         group_type_dict.setdefault(group, []).append([ttype, f'{group}/{ttype}'])
-        
-    train, test = train_test_split(
-        separated_df, test_size=0.28, stratify=separated_df['group_type'],
-        shuffle=True, random_state=42
-    )
     
+    if args.whole_test:
+        test = separated_df
+        #train, test = train_test_split(
+        #    separated_df, test_size=1, stratify=separated_df['group_type'],
+        #    shuffle=True, random_state=42
+        #)
+        return [], test
+    else:
+        train, test = train_test_split(
+            separated_df, test_size=0.28, stratify=separated_df['group_type'],
+            shuffle=True, random_state=42
+        )
+            
     return train, test
 
 def add_to_chroma(db, quotes):
@@ -165,7 +181,7 @@ question 1, question 2, and so on.
 
 {total_classes}
     """
-            else:
+            else: # args don't have description
                 caput = """
 You are a classifier for video game development problems.
 
@@ -187,12 +203,17 @@ using the classes contained in the section 'classes from the dataset'.
 I've given the example of question 0, but this also holds for every other question, like
 question 1, question 2, and so on.
 
+If class for question 0 is, for instance, business/monetization, you need to answer it like:
+
+# question 0
+business/monetization
+
 ## classes from the dataset
 
 {total_classes}
     """
         elif not args.second: # ! first segmented (group)
-                caput = """
+            caput = """
 You are a classifier for video game development problems.
 
 Your task is to, for each one of the sections named with the format "## question 0"
@@ -216,7 +237,7 @@ question 1, question 2, and so on.
 {total_classes}
 """
         else: # ! is second of segmented (type -> group/type)
-                caput = """
+            caput = """
 You are a classifier for video game development problems.
 
 Your task is to, for each one of the sections named with the format "## question 0"
@@ -290,7 +311,7 @@ Output only the classification, **without** any explanation or notes or anything
 just the classification in the format of group/type."""
 
     elif not args.second: # ! is **first** of segmented
-            everything_else = """
+        everything_else = """
 ## Instructions for each one of the sections:  
 1. Input: A problem description related to video game development.
 2. Output: A header with the enumeration of the section, and the group
@@ -310,8 +331,8 @@ corresponding to the group classification thought by you.
 Output only the classification, **without** any explanation or notes or anything,
 just the classification in the format of group."""
 
-    else: # ! is second of segmented
-            everything_else = """
+    else: # ! iecond of segmented
+        everything_else = """
 ## Instructions for each one of the sections:  
 1. Input: A problem description related to video game development.
 2. Output: A header with the enumeration of the section, and the group/type
@@ -424,9 +445,8 @@ in this section:
 {description}
 
 """
-            else:
-                if not args.second:
-                    prompt_template = """
+            elif not args.second:
+                prompt_template = """
 ## question {index}
 
 ### Task:
@@ -436,8 +456,8 @@ in this section:
 {description}
 
 """
-                else:
-                    prompt_template = """
+            else:
+                prompt_template = """
 ## question {index}
 
 | type | group/type |
@@ -480,7 +500,7 @@ def get_model():
         os.environ['GOOGLE_API_KEY'] = dotenv_values('.env')['GEMNINI_API']
     
     model = ChatGoogleGenerativeAI(
-        model='gemini-2.0-pro-exp',
+        model='gemini-flash-latest',
         temperature=0.0,
     )
     
@@ -624,7 +644,7 @@ def main(args):
     if not args.small:
         prompt = aggregate_prompts([res['prompt'] for res in results])
         
-        with open('prompt.txt', 'w+') as fp:
+        with open('prompt.txt', 'w+', encoding="utf-8") as fp:
             fp.write(prompt.to_string())
         
         if not args.cached:
@@ -641,16 +661,19 @@ def main(args):
 
         if not args.segmented or args.second:
             for i, res in enumerate(get_results_form(model_str, r'\b[\w-]+/[\w-]+\b')):
+                print(f'{i}, {res}')
                 results[i]['result'] = res
         else:
             for i, res in enumerate(get_results_form(model_str, r'\b[\w-]+\b')):
                 results[i]['result'] = res
     
+    # sys.exit(0)
     
     if os.path.exists('./results.txt'):
         os.remove('./results.txt')
 
     for i, result in enumerate(results):
+        print(result)
         print(f"""
             
             
@@ -729,6 +752,7 @@ def arg_parser():
     parser.add_argument('--second', action='store_true')
     parser.add_argument('--without_few_shot', action='store_true')
     parser.add_argument('--description', action='store_true')
+    parser.add_argument('--whole_test', action='store_true')
     
     global args
     args = parser.parse_args()
@@ -765,6 +789,8 @@ def arg_parser():
             version_values.append('without_few_shot')
         if args.description:
             version_values.append('description')
+        if args.whole_test:
+            version_values.append('whole_test')
 
         fp.write(' | '.join(version_values))
 
