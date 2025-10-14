@@ -2,6 +2,8 @@ chroma
 venv
 .env
 
+cm.png
+
 cached.txt
 prompt.txt
 results.txt

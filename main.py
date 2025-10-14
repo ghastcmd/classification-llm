@@ -11,6 +11,12 @@ from langchain_core.documents import Document
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from sklearn.model_selection import train_test_split
 
+import matplotlib.pyplot as plt
+
+from sklearn.metrics import f1_score, confusion_matrix, ConfusionMatrixDisplay
+
+import numpy as np
+
 from langchain_chroma import Chroma
 from langchain_ollama import OllamaEmbeddings
 from langchain_ollama.llms import OllamaLLM
@@ -131,17 +137,17 @@ ALL_CLASSES_DESCRIPTION_2 = """
 | production/testing | Any problem regarding the testing. |
 | production/bugs | When there are too many bugs in the game/engine, any failure in the game design or technical issues. |
 | production/prototyping | Lack of or no prototyping phase nor validation of the gameplay/feature. |
-| management/unrealistic-scope | Planning too many features that end up impossible to implement it in a reasonable time. |
-| management/feature-creep | Adding unplanned new features to the game during its implementation. |
-| management/cutting-features | Cutting features previously planned because of other factor like short deadlines. |
-| management/delays | Problems regarding any delay in the production. |
-| management/crunch-time | When developers continuously spent extra hours working in the project. |
-| management/communication | Problems regarding communication with any stakeholder. |
-| management/team |  Problems in setting up the team, loss of professionals during the development or outsourcing. |
-| management/over-budget | Project cost more money than expected. |
-| management/multiple-projects | When there is more than one project being developed at the same time. |
-| management/planning | Problems involving too much time planing/scheduling or the lack of it. |
-| management/security | Problems regarding leaked assets. |
+| management-feature/scope | Planning too many features that end up impossible to implement it in a reasonable time. |
+| management-feature/feature-creep | Adding unplanned new features to the game during its implementation. |
+| management-feature/cutting-features | Cutting features previously planned because of other factor like short deadlines. |
+| management-people/delays | Problems regarding any delay in the production. |
+| management-people/crunch-time | When developers continuously spent extra hours working in the project. |
+| management-people/communication | Problems regarding communication with any stakeholder. |
+| management-people/team |  Problems in setting up the team, loss of professionals during the development or outsourcing. |
+| management-feature/budget | Project cost more money than expected. |
+| management-feature/multiple-projects | When there is more than one project being developed at the same time. |
+| management-feature/planning | Problems involving too much time planing/scheduling or the lack of it. |
+| management-feature/security | Problems regarding leaked assets. |
 | business/marketing | Problems regarding marketing/advertising |
 | business/monetization | Problems with the process used to generate revenue from a video game product.|
 """
@@ -190,20 +196,16 @@ Your task is to, for each one of the sections named with the format "## question
 in the given example it is 0, so this corresponds to the first question section), you'll
 classify its description.
 
-So, for instance, if you are analysing question 0, you'll analyse only the context of the
-question 0, and classify it in the format of group/type using only the context of the 
-section question 0 without inventing new classes or using classes from outside the scope
-of the section 'question 0'. Thus, if you want to classify the description of question 0,
-do not use the context from other question sections.
-
-If you can't figure out the classification only with the context of the section question 0,
-feel free to classify as what it is most likely to be given the context of question 0 or
-using the classes contained in the section 'classes from the dataset'.
+So, for instance, if you are analysing question 0, you'll analyse the description of the
+question 0, and classify it in the format of 'group/type', this tuple of group/type compose a class,
+and using only the classes given the section 'classes from the dataset' with your understanding
+of the class name, and without inventing new classes. Thus, if you want to classify the description
+of question 0, do not use the description from other question sections.
 
 I've given the example of question 0, but this also holds for every other question, like
 question 1, question 2, and so on.
 
-If class for question 0 is, for instance, business/monetization, you need to answer it like:
+If your infered class for question 0 is, for instance, business/monetization, you need to answer it like:
 
 # question 0
 business/monetization
@@ -537,6 +539,14 @@ def get_type_table(group: str):
     table_values = '\n'.join([f'| {entry[0]} | {entry[1]} |' for entry in group_type_dict[group]])
     return table_values
 
+def calculate_metrics():
+    """acurácia
+    f1 macro
+    f1 ponderado
+    matriz de confusão"""
+    
+    
+
 def main(args):
     df_train, df_test = get_dataset_quotes()
     
@@ -661,19 +671,64 @@ def main(args):
 
         if not args.segmented or args.second:
             for i, res in enumerate(get_results_form(model_str, r'\b[\w-]+/[\w-]+\b')):
-                print(f'{i}, {res}')
                 results[i]['result'] = res
         else:
             for i, res in enumerate(get_results_form(model_str, r'\b[\w-]+\b')):
                 results[i]['result'] = res
     
-    # sys.exit(0)
-    
     if os.path.exists('./results.txt'):
         os.remove('./results.txt')
 
+    y_pred = []
+    y_true = []
+    
+    pred_map = dict([
+        ('production/design', 0),
+        ('production/documentation', 1),
+        ('production/tools', 2),
+        ('production/technical', 3),
+        ('production/testing', 4),
+        ('production/bugs', 5),
+        ('production/prototyping', 6),
+        ('management-feature/scope', 7),
+        ('management-feature/feature-creep', 8),
+        ('management-feature/cutting-features', 9),
+        ('management-people/delays', 10),
+        ('management-people/crunch-time', 11),
+        ('management-people/communication', 12),
+        ('management-people/team', 13),
+        ('management-feature/budget', 14),
+        ('management-feature/multiple-projects', 15),
+        ('management-feature/planning', 16),
+        ('management-feature/security', 17),
+        ('business/marketing', 18),
+        ('business/monetization', 19),
+    ])
+    
+    labels = [
+        'production/design',
+        'production/documentation',
+        'production/tools',
+        'production/technical',
+        'production/testing',
+        'production/bugs',
+        'production/prototyping',
+        'management-feature/scope',
+        'management-feature/feature-creep',
+        'management-feature/cutting-features',
+        'management-people/delays',
+        'management-people/crunch-time',
+        'management-people/communication',
+        'management-people/team',
+        'management-feature/budget',
+        'management-feature/multiple-projects',
+        'management-feature/planning',
+        'management-feature/security',
+        'business/marketing',
+        'business/monetization',
+    ]
+
     for i, result in enumerate(results):
-        print(result)
         print(f"""
             
             
@@ -707,7 +762,7 @@ prompt len: {result['prompt_len']}
             })
         else:
             print(f"({errors}) acc: {((i + 1) - errors) / (i + 1)}\nMATCH")
-            
+        
         with open('results.txt', 'a+') as fp:
             res = result['result']
             true_class = result['group_type']
@@ -716,9 +771,37 @@ prompt len: {result['prompt_len']}
             res_in_sug = res in suggestions_split
             true_in_sug = true_class in suggestions_split
             correct = res == true_class
+
+            y_pred.append(res)
+            y_true.append(true_class)
+
             data_to_write = f"{res} | {true_class} | res {res_in_sug} | orig {true_in_sug} | c {correct}\n\n{suggestions}\n\n"
             fp.write(data_to_write)
+
+        ###############
+
+    f1_macro = f1_score(y_true, y_pred, average='macro')
+    f1_weighted = f1_score(y_true, y_pred, average='weighted')
     
+    cm = confusion_matrix(y_true, y_pred, labels=labels)
+    
+    overall_size = 8
+    
+    n = cm.shape[0]
+    cell = 3.0
+    fig_size = (n * cell, n * cell)
+    
+    plt.figure(figsize=fig_size)
+    plt.title('Confusion Matrix')
+    
+    disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=labels)
+    disp.plot(cmap=plt.cm.Blues)
+    
+    plt.xticks(fontsize=8, rotation=45, ha='right')
+    plt.yticks(fontsize=8)
+    
+    plt.tight_layout()
+    plt.savefig('cm.png', dpi=150)
     
     for entry in not_matching:
         print('====== not matching ======')
@@ -733,6 +816,8 @@ prompt len: {result['prompt_len']}
           Total number of tests: {len(df_test)}
           Total number of errors: {len(not_matching)}
           Accuracy: {accuracy}
+          F1 Macro: {f1_macro}
+          F1 Weighted: {f1_weighted}
     """
     
     print(result_printout)
