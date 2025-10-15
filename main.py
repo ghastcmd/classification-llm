@@ -890,12 +890,18 @@ def arg_parser():
             version_values.append('description')
         if args.whole_test:
             version_values.append('whole_test')
-        if args.shuffle_1:
-            version_values.append('shuffle_1')
-        elif args.shuffle_2:
-            version_values.append('shuffle_2')
-        elif args.shuffle_3:
-            version_values.append('shuffle_3')
+            
+        if args.shuffle_1 or args.shuffle_2 or args.shuffle_3:
+            shuffle_values = []
+            if args.shuffle_1:
+                shuffle_values.append('shuffle_1')
+            if args.shuffle_2:
+                shuffle_values.append('shuffle_2')
+            if args.shuffle_3:
+                shuffle_values.append('shuffle_3')
+            
+            if shuffle_values != []:
+                version_values.append(' + '.join(shuffle_values))
         else:
             version_values.append('shuffle_0')
 
