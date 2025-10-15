@@ -35,6 +35,8 @@ group_type_dict = {}
 # DESCRIPTION_COLUMN = 'quote'
 DESCRIPTION_COLUMN = 'cleaned_text'
 
+VERSION_STRING_VALUES = 'not_cleaned'
+
 def get_embedding_function():
     return OllamaEmbeddings(model='mxbai-embed-large')
 
@@ -556,7 +558,7 @@ def calculate_metrics():
     f1 ponderado
     matriz de confusão"""
     
-    
+
 
 def main(args):
     df_train, df_test = get_dataset_quotes()
@@ -834,6 +836,7 @@ prompt len: {result['prompt_len']}
     print(result_printout)
     with open('result_printout.txt', 'w+') as fp:
         fp.write(result_printout)
+        fp.write(f'\n\nversion:\n{VERSION_STRING_VALUES}')
 
     # testing_consistency(chain, query, context, ollama_result)
 
@@ -905,7 +908,9 @@ def arg_parser():
         else:
             version_values.append('shuffle_0')
 
-        fp.write(' | '.join(version_values))
+        global VERSION_STRING_VALUES
+        VERSION_STRING_VALUES = ' | '.join(version_values)
+        fp.write(VERSION_STRING_VALUES)
 
 if __name__ == '__main__':
     arg_parser()    
