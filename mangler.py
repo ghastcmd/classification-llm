@@ -22,6 +22,7 @@ def main():
     copy2folder(foldername, './version.txt')
     copy2folder(foldername, './result_printout.txt')
     copy2folder(foldername, './to_second.txt')
+    copy2folder(foldername, './cm.png')
     
 if __name__ == '__main__':
     main()

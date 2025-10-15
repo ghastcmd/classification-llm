@@ -47,7 +47,14 @@ def get_dataset_quotes():
     if args.whole_test:
         separated_df = separated_df.groupby(
             'group_type', group_keys=False
-        ).sample(frac=0.88, random_state=123)
+        ).sample(frac=0.879, random_state=123)
+        
+        if args.shuffle_1:
+            separated_df = separated_df.sample(frac=1, random_state=1234)
+        if args.shuffle_2:
+            separated_df = separated_df.sample(frac=1, random_state=1235)
+        if args.shuffle_3:
+            separated_df = separated_df.sample(frac=1, random_state=123)
     else:
         separated_df = separated_df.groupby(
             'group_type', group_keys=False
@@ -104,7 +111,7 @@ def add_to_chroma(db, quotes):
     
     return db
 
-ALL_CLASSES_DESCRIPTION = """
+ALL_CLASSES_DESCRIPTION_invalid = """
 | Group | Type | Description of the problem |
 | production | design | Any problem regarding the design of the game, like balancing the gameplay. Not a technical detail. |
 | | documentation | Not planning the game beforehand, not documenting the code, artifacts or game plan. |
@@ -152,6 +159,14 @@ ALL_CLASSES_DESCRIPTION_2 = """
 | business/monetization | Problems with the process used to generate revenue from a video game product.|
 """
 
+
+"""
+The section 'classes from the dataset' contains a table of which the first column is the class
+and the second column is the description of said class, thus, each class have its description
+and you must analyse the description of the classes to best classify the question description.
+"""
+
+
 def aggregate_prompts(arr):
     if args.overall_suggestion:
         if not args.segmented:
@@ -165,23 +180,19 @@ Your task is to, for each one of the sections named with the format "## question
 in the given example it is 0, so this corresponds to the first question section), you'll
 classify its description.
 
-So, for instance, if you are analysing question 0, you'll analyse only the context of the
-question 0, and classify it in the format of group/type using only the context of the 
-section question 0 and the classes from the section 'classes from the dataset',
-without inventing new classes or using classes from outside the scope of the section 'question 0',
-or the section 'classes from the dataset'. Thus, if you want to classify the description of
-question 0, do not use the context from other question sections.
-
-If you can't figure out the classification only with the context of the section question 0,
-feel free to classify as what it is most likely to be given the context of question 0 or
-using the classes contained in the section 'classes from the dataset'.
-
-The section 'classes from the dataset' contains a table of which the first column is the class
-and the second column is the description of said class, thus, each class have its description
-and you must analyse the description of the classes to best classify the question description.
+So, for instance, if you are analysing question 0, you'll analyse the description of the
+question 0, and classify it in the format of 'group/type', this tuple of group/type compose a class,
+and using only the classes given the section 'classes from the dataset' with your understanding
+of the class name and the class description, and without inventing new classes. Thus, if you want to
+classify the description of question 0, do not use the description from other question sections.
 
 I've given the example of question 0, but this also holds for every other question, like
 question 1, question 2, and so on.
+
+If your infered class for question 0 is, for instance, business/monetization, you need to answer it like:
+
+# question 0
+business/monetization
 
 ## classes from the dataset
 
@@ -838,6 +849,9 @@ def arg_parser():
     parser.add_argument('--without_few_shot', action='store_true')
     parser.add_argument('--description', action='store_true')
     parser.add_argument('--whole_test', action='store_true')
+    parser.add_argument('--shuffle_1', action='store_true')
+    parser.add_argument('--shuffle_2', action='store_true')
+    parser.add_argument('--shuffle_3', action='store_true')
     
     global args
     args = parser.parse_args()
@@ -876,6 +890,14 @@ def arg_parser():
             version_values.append('description')
         if args.whole_test:
             version_values.append('whole_test')
+        if args.shuffle_1:
+            version_values.append('shuffle_1')
+        elif args.shuffle_2:
+            version_values.append('shuffle_2')
+        elif args.shuffle_3:
+            version_values.append('shuffle_3')
+        else:
+            version_values.append('shuffle_0')
 
         fp.write(' | '.join(version_values))
 
