@@ -1,5 +1,7 @@
 {
   "python.analysis.diagnosticMode": "off",
   "python.linting.enabled": false,
-  "python.analysis.typeCheckingMode": "off"
+  "python.analysis.typeCheckingMode": "off",
+  "python.linting.pylintEnabled": false,
+  "python.analysis.autoImportCompletions": false
 }

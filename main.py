@@ -517,6 +517,8 @@ def get_model():
     model = ChatGoogleGenerativeAI(
         model='gemini-flash-latest',
         temperature=0.0,
+        top_p=1.0,
+        top_k=1,
     )
     
     
