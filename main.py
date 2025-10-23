@@ -2,6 +2,22 @@ import argparse
 import time
 import os
 import re
+import traceback
+import signal
+
+def handle_traceback_print():
+    traceback.print_stack(file=sys.stdout)
+    global debug_printout
+    if debug_printout == []:
+        print('debug_printout not populated :-(')
+    else:
+        print(debug_printout)
+
+def handle_user_exit(sig, frame):
+    handle_traceback_print()
+    sys.exit(0)
+
+signal.signal(signal.SIGINT, handle_user_exit)
 
 import pandas as pd
 
@@ -32,6 +48,8 @@ unique_values = []
 unique_groups = []
 group_type_dict = {}
 
+debug_printout = []
+
 # DESCRIPTION_COLUMN = 'quote'
 DESCRIPTION_COLUMN = 'cleaned_text'
 
@@ -42,7 +60,11 @@ def get_embedding_function():
 
 def get_dataset_quotes():
     separated_df = pd.read_csv('./dataset/cleaned-dataset.csv')[[DESCRIPTION_COLUMN, 'group', 'type']]
-    separated_df['group_type'] = separated_df["group"] + '/' + separated_df["type"]
+    
+    if not args.unique:
+        separated_df['group_type'] = separated_df["group"] + '/' + separated_df["type"]
+    else:
+        separated_df['group_type'] = separated_df["type"]
     
     # separated_df = separated_df[separated_df['group_type'] != 'management-feature/security']
     
@@ -72,9 +94,16 @@ def get_dataset_quotes():
     unique_values = separated_df['group_type'].unique()
     unique_groups = separated_df['group'].unique()
     
-    for val in unique_values:
-        group, ttype = val.split('/')
-        group_type_dict.setdefault(group, []).append([ttype, f'{group}/{ttype}'])
+    
+    if not args.unique:
+        for val in unique_values:
+            group, ttype = val.split('/')
+            group_type_dict.setdefault(group, []).append([ttype, f'{group}/{ttype}'])
+    # else:
+    #     for val in unique_values:
+    #         # group, ttype = val.split('/')
+    #         ttype = val
+    #         group_type_dict.setdefault(ttype, []).append([ttype, f'{ttype}'])
     
     if args.whole_test:
         test = separated_df
@@ -161,6 +190,29 @@ ALL_CLASSES_DESCRIPTION_2 = """
 | business/monetization | Problems with the process used to generate revenue from a video game product.|
 """
 
+ALL_CLASSES_DESCRIPTION_UNIQUE = """
+| type | description of the class |
+| design | Any problem regarding the design of the game, like balancing the gameplay. Not a technical detail. |
+| documentation | Not planning the game beforehand, not documenting the code, artifacts or game plan. |
+| tools | Any problem with tools like engines, APIs, development kits, third-party software, etc. |
+| technical | Problems with the team code/assets infrastructure. |
+| testing | Any problem regarding the testing. |
+| bugs | When there are too many bugs in the game/engine, any failure in the game design or technical issues. |
+| prototyping | Lack of or no prototyping phase nor validation of the gameplay/feature. |
+| scope | Planning too many features that end up impossible to implement it in a reasonable time. |
+| feature-creep | Adding unplanned new features to the game during its implementation. |
+| cutting-features | Cutting features previously planned because of other factor like short deadlines. |
+| delays | Problems regarding any delay in the production. |
+| crunch-time | When developers continuously spent extra hours working in the project. |
+| communication | Problems regarding communication with any stakeholder. |
+| team |  Problems in setting up the team, loss of professionals during the development or outsourcing. |
+| budget | Project cost more money than expected. |
+| multiple-projects | When there is more than one project being developed at the same time. |
+| planning | Problems involving too much time planing/scheduling or the lack of it. |
+| security | Problems regarding leaked assets. |
+| marketing | Problems regarding marketing/advertising |
+| monetization | Problems with the process used to generate revenue from a video game product.|
+"""
 
 """
 The section 'classes from the dataset' contains a table of which the first column is the class
@@ -174,7 +226,35 @@ def aggregate_prompts(arr):
         if not args.segmented:
             
             if args.description:
-                caput = """
+                if args.unique:
+                    caput = """
+You are a classifier for video game development problems.
+
+Your task is to, for each one of the sections named with the format "## question 0"
+(with two hashtag '##', followed by the name 'question' with the enumeration of the section,
+in the given example it is 0, so this corresponds to the first question section), you'll
+classify its description.
+
+So, for instance, if you are analysing question 0, you'll analyse the description of the
+question 0, and classify it with only one line containing the name of the class, which is done
+using only the classes given the section 'classes from the dataset' with your understanding
+of the class description, and without inventing new classes. Thus, if you want to classify
+the description of question 0, do not use the description from other question sections.
+
+I've given the example of question 0, but this also holds for every other question, like
+question 1, question 2, and so on.
+
+If your inferred class for question 0 is, for instance, monetization, you need to answer it like:
+
+# question 0
+monetization
+
+## classes from the dataset
+
+{total_classes}
+    """
+                else:
+                    caput = """
 You are a classifier for video game development problems.
 
 Your task is to, for each one of the sections named with the format "## question 0"
@@ -185,7 +265,7 @@ classify its description.
 So, for instance, if you are analysing question 0, you'll analyse the description of the
 question 0, and classify it in the format of 'group/type', this tuple of group/type compose a class,
 and using only the classes given the section 'classes from the dataset' with your understanding
-of the class name and the class description, and without inventing new classes. Thus, if you want to
+of the class description, and without inventing new classes. Thus, if you want to
 classify the description of question 0, do not use the description from other question sections.
 
 I've given the example of question 0, but this also holds for every other question, like
@@ -315,15 +395,7 @@ the section.
 
 ---
 {all_questions}
----
-
-## Task for every one of the sections
-
-For each one of the sections above, return a oneliner
-corresponding to the group/type classification thought by you.
-
-Output only the classification, **without** any explanation or notes or anything,
-just the classification in the format of group/type."""
+---"""
 
     elif not args.second: # ! is **first** of segmented
         everything_else = """
@@ -346,7 +418,7 @@ corresponding to the group classification thought by you.
 Output only the classification, **without** any explanation or notes or anything,
 just the classification in the format of group."""
 
-    else: # ! iecond of segmented
+    else: # ! is second of segmented
         everything_else = """
 ## Instructions for each one of the sections:  
 1. Input: A problem description related to video game development.
@@ -376,10 +448,15 @@ just the classification in the format of group/type."""
     prompt = PromptTemplate.from_template(template)
     if args.overall_suggestion and not args.second:
         if not args.segmented:
-            if args.description:
+            if args.description and not args.unique:
                 prompt = prompt.invoke({
                     'all_questions': questions,
                     'total_classes': ALL_CLASSES_DESCRIPTION_2,
+                })
+            elif args.description and args.unique:
+                prompt = prompt.invoke({
+                    'all_questions': questions,
+                    'total_classes': ALL_CLASSES_DESCRIPTION_UNIQUE,
                 })
             else:
                 prompt = prompt.invoke({
@@ -472,6 +549,11 @@ in this section:
 
 """
             else:
+                if args.unique:
+                    print("ERROR!!!!!!!!!!!!!!!!!\n Invalid combination (segmented -- type 2 --, and unique)")
+                    handle_traceback_print()
+                    sys.exit(0)
+                
                 prompt_template = """
 ## question {index}
 
@@ -517,16 +599,16 @@ def get_model():
     model = ChatGoogleGenerativeAI(
         model='gemini-flash-latest',
         temperature=0.0,
+        # thinking_budget=0,
         top_p=1.0,
         top_k=1,
     )
-    
     
     return model
 
 def get_results_form(model_str: str, regex_format: str):
     model_result_arr = model_str.strip().split('\n')
-    print(model_result_arr)
+    # print(model_result_arr)
     
     def extract_formatted_string(in_str):
         matches = re.findall(regex_format, in_str)
@@ -592,7 +674,7 @@ def main(args):
         
         groups = get_results_form(previous_model_out, r'\b[\w-]+\b')
 
-    for i, entry in enumerate(test_data):
+    for i, entry in enumerate(test_data, start=1):
         _, entry = entry
         query = entry[DESCRIPTION_COLUMN]
         
@@ -620,12 +702,20 @@ def main(args):
             }
         else:
             if args.segmented and args.second:
-                prompt_data = {
-                    'description': query,
-                    'suggestions': suggestions,
-                    'type_2_group': get_type_table(group_entry),
-                    'index': i,
-                }
+                if not args.unique:
+                    prompt_data = {
+                        'description': query,
+                        'suggestions': suggestions,
+                        'type_2_group': get_type_table(group_entry),
+                        'index': i,
+                    }
+                else:
+                    prompt_data = {
+                        'description': query,
+                        'suggestions': suggestions,
+                        # 'type_2_group': get_type_table(group_entry),
+                        'index': i,
+                    }
             else:
                 if not args.segmented:
                     prompt_data = {
@@ -656,10 +746,10 @@ def main(args):
             'context': context,
         }
         
-        if args.small:
+        if args.small: #! only small, the main is bellow
             print('invoked small part')
-            model_result = model.invoke(prompt)
-            model_result = model_result.content
+            response = model.invoke(prompt)
+            model_result = response.content
             result['result'] = model_result
         else:
             result['prompt'] = prompt.to_string()
@@ -673,10 +763,22 @@ def main(args):
             fp.write(prompt.to_string())
         
         if not args.cached:
-            model_result = model.invoke(prompt)
-            model_str = model_result.content
+            # try:
+            response = model.invoke(prompt)
+            # except:
+            #     debug_printout.append(f'error with model invoke. traceback:')
+            #     handle_traceback_print()
+            #     sys.exit(0)
+            
+            model_str = response.content
+            
+            # getting token count
+            metadata = response.usage_metadata
+            debug_printout.append(f'{metadata}')
+            
             with open('cached.txt', 'w+') as fp:
                 fp.write(model_str)
+                debug_printout.append('written to cached.txt')
             if not args.second:
                 with open('to_second.txt', 'w+') as fp:
                     fp.write(model_str)
@@ -684,7 +786,7 @@ def main(args):
             with open('cached.txt', 'r') as fp:
                 model_str = fp.read()
 
-        if not args.segmented or args.second:
+        if (not args.segmented and not args.unique) or args.second:
             for i, res in enumerate(get_results_form(model_str, r'\b[\w-]+/[\w-]+\b')):
                 results[i]['result'] = res
         else:
@@ -697,56 +799,58 @@ def main(args):
     y_pred = []
     y_true = []
     
-    pred_map = dict([
-        ('production/design', 0),
-        ('production/documentation', 1),
-        ('production/tools', 2),
-        ('production/technical', 3),
-        ('production/testing', 4),
-        ('production/bugs', 5),
-        ('production/prototyping', 6),
-        ('management-feature/scope', 7),
-        ('management-feature/feature-creep', 8),
-        ('management-feature/cutting-features', 9),
-        ('management-people/delays', 10),
-        ('management-people/crunch-time', 11),
-        ('management-people/communication', 12),
-        ('management-people/team', 13),
-        ('management-feature/budget', 14),
-        ('management-feature/multiple-projects', 15),
-        ('management-feature/planning', 16),
-        ('management-feature/security', 17),
-        ('business/marketing', 18),
-        ('business/monetization', 19),
-    ])
-    
-    labels = [
-        'production/design',
-        'production/documentation',
-        'production/tools',
-        'production/technical',
-        'production/testing',
-        'production/bugs',
-        'production/prototyping',
-        'management-feature/scope',
-        'management-feature/feature-creep',
-        'management-feature/cutting-features',
-        'management-people/delays',
-        'management-people/crunch-time',
-        'management-people/communication',
-        'management-people/team',
-        'management-feature/budget',
-        'management-feature/multiple-projects',
-        'management-feature/planning',
-        'management-feature/security',
-        'business/marketing',
-        'business/monetization',
-    ]
+    if not args.unique:
+        labels = [
+            'production/design',
+            'production/documentation',
+            'production/tools',
+            'production/technical',
+            'production/testing',
+            'production/bugs',
+            'production/prototyping',
+            'management-feature/scope',
+            'management-feature/feature-creep',
+            'management-feature/cutting-features',
+            'management-people/delays',
+            'management-people/crunch-time',
+            'management-people/communication',
+            'management-people/team',
+            'management-feature/budget',
+            'management-feature/multiple-projects',
+            'management-feature/planning',
+            'management-feature/security',
+            'business/marketing',
+            'business/monetization',
+        ]
+    else:
+        labels = [
+            'design',
+            'documentation',
+            'tools',
+            'technical',
+            'testing',
+            'bugs',
+            'prototyping',
+            'scope',
+            'feature-creep',
+            'cutting-features',
+            'delays',
+            'crunch-time',
+            'communication',
+            'team',
+            'budget',
+            'multiple-projects',
+            'planning',
+            'security',
+            'marketing',
+            'monetization',
+        ]
 
     for i, result in enumerate(results):
-        print(f"""
-            
-            
+        try:
+            print(f"""
+                
+                
 ==================
 
 query: {result['query']}
@@ -757,6 +861,10 @@ query: {result['query']}
 
 prompt len: {result['prompt_len']}
 {i+1}/{len_test_data}""")
+        
+        except:
+            handle_traceback_print()
+            sys.exit(0)
 
         def get_comparison_safe():
             if not args.segmented or args.second:
@@ -803,7 +911,7 @@ prompt len: {result['prompt_len']}
     overall_size = 8
     
     n = cm.shape[0]
-    cell = 3.0
+    cell = 4.0
     fig_size = (n * cell, n * cell)
     
     plt.figure(figsize=fig_size)
@@ -857,6 +965,8 @@ def arg_parser():
     parser.add_argument('--shuffle_1', action='store_true')
     parser.add_argument('--shuffle_2', action='store_true')
     parser.add_argument('--shuffle_3', action='store_true')
+    parser.add_argument('--unique', action='store_true')
+    parser.add_argument('--count_tokens', action='store_true')
     
     global args
     args = parser.parse_args()
@@ -909,6 +1019,11 @@ def arg_parser():
                 version_values.append(' + '.join(shuffle_values))
         else:
             version_values.append('shuffle_0')
+        
+        if args.unique:
+            version_values.append('unique')
+        if args.count_tokens:
+            version_values.append('count_tokens')
 
         global VERSION_STRING_VALUES
         VERSION_STRING_VALUES = ' | '.join(version_values)
