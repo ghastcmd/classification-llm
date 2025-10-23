@@ -69,10 +69,14 @@ def get_dataset_quotes():
     # separated_df = separated_df[separated_df['group_type'] != 'management-feature/security']
     
     if args.whole_test:
+        # separated_df = separated_df.groupby(
+        #     'group_type', group_keys=False
+        # ).sample(frac=0.879, random_state=123)
+        
         separated_df = separated_df.groupby(
             'group_type', group_keys=False
-        ).sample(frac=0.879, random_state=123)
-        
+        ).sample(frac=1.0, random_state=123)
+
         if args.shuffle_1:
             separated_df = separated_df.sample(frac=1, random_state=1234)
         if args.shuffle_2:
@@ -240,6 +244,8 @@ question 0, and classify it with only one line containing the name of the class,
 using only the classes given the section 'classes from the dataset' with your understanding
 of the class description, and without inventing new classes. Thus, if you want to classify
 the description of question 0, do not use the description from other question sections.
+
+You will answer each question accordingly, not more not less.
 
 I've given the example of question 0, but this also holds for every other question, like
 question 1, question 2, and so on.
