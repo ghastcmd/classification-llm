@@ -29,7 +29,7 @@ from sklearn.model_selection import train_test_split
 
 import matplotlib.pyplot as plt
 
-from sklearn.metrics import f1_score, confusion_matrix, ConfusionMatrixDisplay
+from sklearn.metrics import f1_score, precision_score, recall_score, confusion_matrix, ConfusionMatrixDisplay
 
 import numpy as np
 
@@ -63,8 +63,10 @@ def get_dataset_quotes():
     
     if not args.unique:
         separated_df['group_type'] = separated_df["group"] + '/' + separated_df["type"]
-    else:
+    elif args.unique and not args.major:
         separated_df['group_type'] = separated_df["type"]
+    elif args.major:
+        separated_df['group_type'] = separated_df["group"]
     
     # separated_df = separated_df[separated_df['group_type'] != 'management-feature/security']
     
@@ -194,6 +196,30 @@ ALL_CLASSES_DESCRIPTION_2 = """
 | business/monetization | Problems with the process used to generate revenue from a video game product.|
 """
 
+ALL_CLASSES_DESCRIPTION_major = """
+| group | description of the class |
+| production | Any problem regarding the design of the game, like balancing the gameplay. Not a technical detail. |
+| production | Not planning the game beforehand, not documenting the code, artifacts or game plan. |
+| production | Any problem with tools like engines, APIs, development kits, third-party software, etc. |
+| production | Problems with the team code/assets infrastructure. |
+| production | Any problem regarding the testing. |
+| production | When there are too many bugs in the game/engine, any failure in the game design or technical issues. |
+| production | Lack of or no prototyping phase nor validation of the gameplay/feature. |
+| management-feature | Planning too many features that end up impossible to implement it in a reasonable time. |
+| management-feature | Adding unplanned new features to the game during its implementation. |
+| management-feature | Cutting features previously planned because of other factor like short deadlines. |
+| management-people | Problems regarding any delay in the production. |
+| management-people | When developers continuously spent extra hours working in the project. |
+| management-people | Problems regarding communication with any stakeholder. |
+| management-people |  Problems in setting up the team, loss of professionals during the development or outsourcing. |
+| management-feature | Project cost more money than expected. |
+| management-feature | When there is more than one project being developed at the same time. |
+| management-feature | Problems involving too much time planing/scheduling or the lack of it. |
+| management-feature | Problems regarding leaked assets. |
+| business | Problems regarding marketing/advertising |
+| business | Problems with the process used to generate revenue from a video game product.|
+"""
+
 ALL_CLASSES_DESCRIPTION_UNIQUE = """
 | type | description of the class |
 | design | Any problem regarding the design of the game, like balancing the gameplay. Not a technical detail. |
@@ -228,9 +254,10 @@ and you must analyse the description of the classes to best classify the questio
 def aggregate_prompts(arr):
     if args.overall_suggestion:
         if not args.segmented:
-            
+
             if args.description:
-                if args.unique:
+                if args.unique and not args.major:
+                    # if not args.major:
                     caput = """
 You are a classifier for video game development problems.
 
@@ -258,7 +285,36 @@ monetization
 ## classes from the dataset
 
 {total_classes}
-    """
+"""
+                elif not args.unique and args.major:
+                    caput = """
+You are a classifier for video game development problems.
+
+Your task is to, for each one of the sections named with the format "## question 0"
+(with two hashtag '##', followed by the name 'question' with the enumeration of the section,
+in the given example it is 0, so this corresponds to the first question section), you'll
+classify its description.
+
+So, for instance, if you are analysing question 0, you'll analyse the description of the
+question 0, and classify it with only one line containing the name of the class, which is done
+using only the classes given the section 'classes from the dataset' with your understanding
+of the class description, and without inventing new classes. Thus, if you want to classify
+the description of question 0, do not use the description from other question sections.
+
+You will answer each question accordingly, not more not less.
+
+I've given the example of question 0, but this also holds for every other question, like
+question 1, question 2, and so on.
+
+If your inferred class for question 0 is, for instance, monetization, you need to answer it like:
+
+# question 0
+production
+
+## classes from the dataset
+
+{total_classes}
+"""
                 else:
                     caput = """
 You are a classifier for video game development problems.
@@ -402,6 +458,7 @@ the section.
 ---
 {all_questions}
 ---"""
+    
 
     elif not args.second: # ! is **first** of segmented
         everything_else = """
@@ -454,15 +511,20 @@ just the classification in the format of group/type."""
     prompt = PromptTemplate.from_template(template)
     if args.overall_suggestion and not args.second:
         if not args.segmented:
-            if args.description and not args.unique:
+            if args.description and not args.unique and not args.major:
                 prompt = prompt.invoke({
                     'all_questions': questions,
                     'total_classes': ALL_CLASSES_DESCRIPTION_2,
                 })
-            elif args.description and args.unique:
+            elif args.description and args.unique and not args.major:
                 prompt = prompt.invoke({
                     'all_questions': questions,
                     'total_classes': ALL_CLASSES_DESCRIPTION_UNIQUE,
+                })
+            elif args.description and args.major:
+                prompt = prompt.invoke({
+                    'all_questions': questions,
+                    'total_classes': ALL_CLASSES_DESCRIPTION_major,
                 })
             else:
                 prompt = prompt.invoke({
@@ -805,7 +867,7 @@ def main(args):
     y_pred = []
     y_true = []
     
-    if not args.unique:
+    if not args.unique and not args.major:
         labels = [
             'production/design',
             'production/documentation',
@@ -828,7 +890,7 @@ def main(args):
             'business/marketing',
             'business/monetization',
         ]
-    else:
+    elif args.unique and not args.major:
         labels = [
             'design',
             'documentation',
@@ -850,6 +912,13 @@ def main(args):
             'security',
             'marketing',
             'monetization',
+        ]
+    elif args.major:
+        labels = [
+            'production',
+            'management-people',
+            'management-feature',
+            'business',
         ]
 
     for i, result in enumerate(results):
@@ -906,7 +975,7 @@ prompt len: {result['prompt_len']}
 
             data_to_write = f"{res} | {true_class} | res {res_in_sug} | orig {true_in_sug} | c {correct}\n\n{suggestions}\n\n"
             fp.write(data_to_write)
-
+    
         ###############
 
     f1_macro = f1_score(y_true, y_pred, average='macro')
@@ -914,6 +983,9 @@ prompt len: {result['prompt_len']}
     
     cm = confusion_matrix(y_true, y_pred, labels=labels)
     
+    precision = precision_score(y_true, y_pred, average='macro')
+    recall = recall_score(y_true, y_pred, average='macro')
+
     overall_size = 8
     
     n = cm.shape[0]
@@ -945,6 +1017,8 @@ prompt len: {result['prompt_len']}
           Total number of tests: {len(df_test)}
           Total number of errors: {len(not_matching)}
           Accuracy: {accuracy}
+          Precision: {precision}
+          Recall: {recall}
           F1 Macro: {f1_macro}
           F1 Weighted: {f1_weighted}
     """
@@ -973,6 +1047,7 @@ def arg_parser():
     parser.add_argument('--shuffle_3', action='store_true')
     parser.add_argument('--unique', action='store_true')
     parser.add_argument('--count_tokens', action='store_true')
+    parser.add_argument('--major', action='store_true')
     
     global args
     args = parser.parse_args()
@@ -1030,6 +1105,8 @@ def arg_parser():
             version_values.append('unique')
         if args.count_tokens:
             version_values.append('count_tokens')
+        if args.major:
+            version_values.append('major')
 
         global VERSION_STRING_VALUES
         VERSION_STRING_VALUES = ' | '.join(version_values)
