@@ -11,7 +11,8 @@ def handle_traceback_print():
     if debug_printout == []:
         print('debug_printout not populated :-(')
     else:
-        print(debug_printout)
+        for line in debug_printout:
+            print(line)
 
 def handle_user_exit(sig, frame):
     handle_traceback_print()
@@ -61,7 +62,7 @@ def get_embedding_function():
 def get_dataset_quotes():
     separated_df = pd.read_csv('./dataset/cleaned-dataset.csv')[[DESCRIPTION_COLUMN, 'group', 'type']]
     
-    if not args.unique:
+    if not args.unique and not args.major:
         separated_df['group_type'] = separated_df["group"] + '/' + separated_df["type"]
     elif args.unique and not args.major:
         separated_df['group_type'] = separated_df["type"]
@@ -101,7 +102,7 @@ def get_dataset_quotes():
     unique_groups = separated_df['group'].unique()
     
     
-    if not args.unique:
+    if not args.unique and not args.major:
         for val in unique_values:
             group, ttype = val.split('/')
             group_type_dict.setdefault(group, []).append([ttype, f'{group}/{ttype}'])
@@ -457,8 +458,9 @@ the section.
 
 ---
 {all_questions}
----"""
-    
+---
+"""
+
 
     elif not args.second: # ! is **first** of segmented
         everything_else = """
@@ -666,8 +668,10 @@ def get_model():
     
     model = ChatGoogleGenerativeAI(
         model='gemini-flash-latest',
-        temperature=0.0,
         # thinking_budget=0,
+        max_output_tokens=30000,
+        generation_config={'thinking_budget_token_count': 0},
+        temperature=0.0,
         top_p=1.0,
         top_k=1,
     )
@@ -832,7 +836,13 @@ def main(args):
         
         if not args.cached:
             # try:
-            response = model.invoke(prompt)
+            response = ''
+            if args.stream:
+                for chunk in model.stream(prompt):
+                    print(chunk.content)
+                # exit()
+            else:
+                response = model.invoke(prompt)
             # except:
             #     debug_printout.append(f'error with model invoke. traceback:')
             #     handle_traceback_print()
@@ -843,7 +853,11 @@ def main(args):
             # getting token count
             metadata = response.usage_metadata
             debug_printout.append(f'{metadata}')
+            debug_printout.append(f'{response}')
             
+            with open('test.txt', 'w') as fp:
+                fp.write(f'{debug_printout}')
+
             with open('cached.txt', 'w+') as fp:
                 fp.write(model_str)
                 debug_printout.append('written to cached.txt')
@@ -854,7 +868,7 @@ def main(args):
             with open('cached.txt', 'r') as fp:
                 model_str = fp.read()
 
-        if (not args.segmented and not args.unique) or args.second:
+        if (not args.segmented and not args.unique and not args.major) or args.second:
             for i, res in enumerate(get_results_form(model_str, r'\b[\w-]+/[\w-]+\b')):
                 results[i]['result'] = res
         else:
@@ -975,7 +989,7 @@ prompt len: {result['prompt_len']}
 
             data_to_write = f"{res} | {true_class} | res {res_in_sug} | orig {true_in_sug} | c {correct}\n\n{suggestions}\n\n"
             fp.write(data_to_write)
-    
+
         ###############
 
     f1_macro = f1_score(y_true, y_pred, average='macro')
@@ -1048,6 +1062,7 @@ def arg_parser():
     parser.add_argument('--unique', action='store_true')
     parser.add_argument('--count_tokens', action='store_true')
     parser.add_argument('--major', action='store_true')
+    parser.add_argument('--stream', action='store_true')
     
     global args
     args = parser.parse_args()
