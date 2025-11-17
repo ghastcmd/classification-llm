@@ -2,18 +2,12 @@ import os
 
 def main():
     values = [
-        # '--overall_suggestion --without_few_shot --whole_test --description --major --unique',
-        # '--overall_suggestion --without_few_shot --whole_test --description --unique',
-        # '--overall_suggestion --without_few_shot --whole_test --major --unique',
-        # '--overall_suggestion --without_few_shot --whole_test --unique',
-        '--overall_suggestion --without_few_shot --whole_test --description --major',
-        '--overall_suggestion --without_few_shot --whole_test --description',
-        '--overall_suggestion --without_few_shot --whole_test --major',
-        '--overall_suggestion --without_few_shot --whole_test',
-        # '--overall_suggestion --without_few_shot --whole_test --cleaned --description --major --unique',
-        # '--overall_suggestion --without_few_shot --whole_test --cleaned --description --unique',
-        # '--overall_suggestion --without_few_shot --whole_test --cleaned --major --unique',
-        # '--overall_suggestion --without_few_shot --whole_test --cleaned --unique',
+        '--overall_suggestion --without_few_shot --whole_test --description --unique', # characteristic, description
+        '--overall_suggestion --without_few_shot --whole_test --unique', # characteristic
+        '--overall_suggestion --without_few_shot --whole_test --description --major', # general, description
+        '--overall_suggestion --without_few_shot --whole_test --major', # general
+        '--overall_suggestion --without_few_shot --whole_test --description', # description
+        '--overall_suggestion --without_few_shot --whole_test', # default
     ]
 
     for value in values:
