@@ -24,7 +24,7 @@ def main(root, file='result_printout.txt', n=4*6):
 
     def format_print(value, index):
         # description = ['CD', 'C', 'GD', 'G', 'D', 'P']
-        return f"{description[index]} & {value['Accuracy']} {value['Precision']} & {value['Recall']} & {value['F1 Macro']} & {value['F1 Weighted']} \\\\"
+        return f"& {float(value['Accuracy']):.3f} & {float(value['Precision']):.3f} & {float(value['Recall']):.3f} & {float(value['F1 Macro']):.3f} & {float(value['F1 Weighted']):.3f} \\\\"
 
     for index, value in enumerate(out):
         print(format_print(out[value], index // 4))
