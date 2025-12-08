@@ -1,0 +1,22 @@
+[project]
+name = "tcc"
+version = "0.1.0"
+description = "A classifier with LLM of game develoment postmortem problems."
+authors = [
+    {name = "Your Name",email = "you@example.com"}
+]
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "pandas (>=2.3.3,<3.0.0)",
+    "langchain (>=1.1.3,<2.0.0)",
+    "numpy (>=2.3.5,<3.0.0)",
+    "matplotlib (>=3.10.7,<4.0.0)",
+    "sklearn (>=0.0.post12,<0.1)",
+    "dotenv (>=0.9.9,<0.10.0)"
+]
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
