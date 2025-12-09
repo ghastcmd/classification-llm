@@ -25,7 +25,7 @@ import pandas as pd
 from langchain_core.prompts import PromptTemplate
 from langchain_core.prompt_values import PromptValue
 from langchain_core.documents import Document
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 from sklearn.model_selection import train_test_split
 
 import matplotlib.pyplot as plt
@@ -38,6 +38,8 @@ from langchain_chroma import Chroma
 from langchain_ollama import OllamaEmbeddings
 from langchain_ollama.llms import OllamaLLM
 from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_core.messages import SystemMessage, HumanMessage
+
 from dotenv import dotenv_values
 
 import sys
@@ -55,6 +57,8 @@ debug_printout = []
 DESCRIPTION_COLUMN = 'cleaned_text'
 
 VERSION_STRING_VALUES = 'not_cleaned'
+
+TOTAL_LENGTH_DATASET = 0
 
 def get_embedding_function():
     return OllamaEmbeddings(model='mxbai-embed-large')
@@ -92,15 +96,17 @@ def get_dataset_quotes():
         ).sample(frac=0.07, random_state=123)
     
     # Removing smaller classes
-    counts = separated_df['group_type'].value_counts()
-    to_keep = counts[counts >= 2].index
-    mask = separated_df['group_type'].isin(to_keep)
-    separated_df = separated_df[mask]
+    # counts = separated_df['group_type'].value_counts()
+    # to_keep = counts[counts >= 2].index
+    # mask = separated_df['group_type'].isin(to_keep)
+    # separated_df = separated_df[mask]
     
     global unique_values, unique_groups
     unique_values = separated_df['group_type'].unique()
     unique_groups = separated_df['group'].unique()
     
+    global TOTAL_LENGTH_DATASET
+    TOTAL_LENGTH_DATASET = separated_df.shape[0]
     
     if not args.unique and not args.major:
         for val in unique_values:
@@ -148,6 +154,13 @@ def add_to_chroma(db, quotes):
     db.add_documents(splitted_documents)
     
     return db
+
+SYSTEM_PROMPT = """\
+Do NOT explain your reasoning.
+Respond directly with the final answer.
+No chain-of-thought. No explanations. No step-by-step.
+Keep responses short and minimal.
+"""
 
 ALL_CLASSES_DESCRIPTION_invalid = """
 | Group | Type | Description of the problem |
@@ -664,13 +677,12 @@ def get_model():
     # )
     # model = OllamaLLM(model='phi3:14b', temperature=0)
     if 'GOOGLE_API_KEY' not in os.environ:
-        os.environ['GOOGLE_API_KEY'] = dotenv_values('.env')['GEMNINI_API']
+        os.environ['GOOGLE_API_KEY'] = dotenv_values('.env')['GEMINI_API']
     
     model = ChatGoogleGenerativeAI(
         model='gemini-flash-latest',
-        # thinking_budget=0,
-        max_output_tokens=30000,
-        generation_config={'thinking_budget_token_count': 0},
+        # max_output_tokens=30000,
+        # max_reasoning_tokens=0,
         temperature=0.0,
         top_p=1.0,
         top_k=1,
@@ -802,7 +814,7 @@ def main(args):
                     }
                     
 
-        prompt = prompt_template.invoke(prompt_data)
+        prompt = prompt_template.invoke(prompt_data).to_string()
         
         prompt_txt = prompt_template.format(**prompt_data)
         prompt_len = len(prompt_txt)
@@ -820,11 +832,17 @@ def main(args):
         
         if args.small: #! only small, the main is bellow
             print('invoked small part')
-            response = model.invoke(prompt)
+
+            messages = [
+                SystemMessage(content=SYSTEM_PROMPT),
+                HumanMessage(content=prompt.to_string())
+            ]
+            
+            response = model.invoke(messages)
             model_result = response.content
             result['result'] = model_result
         else:
-            result['prompt'] = prompt.to_string()
+            result['prompt'] = prompt
     
         results.append(result)
     
@@ -837,12 +855,18 @@ def main(args):
         if not args.cached:
             # try:
             response = ''
+
+            messages = [
+                SystemMessage(content=SYSTEM_PROMPT),
+                HumanMessage(content=prompt.to_string())
+            ]
+
             if args.stream:
-                for chunk in model.stream(prompt):
+                for chunk in model.stream(messages):
                     print(chunk.content)
                 # exit()
             else:
-                response = model.invoke(prompt)
+                response = model.invoke(messages)
             # except:
             #     debug_printout.append(f'error with model invoke. traceback:')
             #     handle_traceback_print()
@@ -869,10 +893,11 @@ def main(args):
                 model_str = fp.read()
 
         if (not args.segmented and not args.unique and not args.major) or args.second:
-            for i, res in enumerate(get_results_form(model_str, r'\b[\w-]+/[\w-]+\b')):
+            for i, res in enumerate(get_results_form(model_str, r'\b[\w-]+/[\w-]+\b')[:TOTAL_LENGTH_DATASET]):
                 results[i]['result'] = res
         else:
-            for i, res in enumerate(get_results_form(model_str, r'\b[\w-]+\b')):
+            to_print_value = get_results_form(model_str, r'\b[\w-]+\b')
+            for i, res in enumerate(get_results_form(model_str, r'\b[\w-]+\b')[:TOTAL_LENGTH_DATASET]):
                 results[i]['result'] = res
     
     if os.path.exists('./results.txt'):
@@ -951,7 +976,8 @@ query: {result['query']}
 prompt len: {result['prompt_len']}
 {i+1}/{len_test_data}""")
         
-        except:
+        except Exception as e:
+            print('Exception:', e)
             handle_traceback_print()
             sys.exit(0)
 

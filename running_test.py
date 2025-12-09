@@ -13,6 +13,7 @@ def main():
     for value in values:
         # os.system('py test.py')
         for val in ['', '--shuffle_1', '--shuffle_2', '--shuffle_3']:
+        # for val in ['']:
             os.system(f'py main.py {value} ' + val)
             os.system('py mangler.py')
 

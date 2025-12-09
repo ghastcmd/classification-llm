@@ -8,7 +8,7 @@
             "request": "launch",
             "program": "main.py",
             "console": "integratedTerminal",
-            "args": ["--overall_suggestion", "--without_few_shot", "--whole_test", "--description", "--major"]
+            "args": ["--overall_suggestion", "--without_few_shot", "--whole_test", "--description", "--unique"]
         }
     ]
 }
