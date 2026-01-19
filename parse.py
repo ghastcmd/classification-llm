@@ -60,30 +60,58 @@ def main(root, file='result_printout.txt', n=4*6):
         previous_stack[prepend].append([float(value['Accuracy']), float(value['Precision']), float(value['Recall']), float(value['F1 Macro']), float(value['F1 Weighted'])])
         return f"{prepend} & {float(value['Accuracy']):.3f} & {float(value['Precision']):.3f} & {float(value['Recall']):.3f} & {float(value['F1 Macro']):.3f} & {float(value['F1 Weighted']):.3f} \\\\"
 
-    def get_mean(current_list: list):
+    def get_mean_2_highest(current_list: list, num = 2):
         max_size = len(current_list)
         return_value = [0, 0, 0, 0, 0]
-        for line in current_list:
+        ind_value = {0:[0, 0], 1:[0, 1], 2:[0,2], 3:[0,3]}
+        for i, line in enumerate(current_list):
+            for index, val in enumerate(line):
+                ind_value[i][0] += val
+
+        sorted_index = sorted(ind_value.items(), key=lambda item: item[1][0], reverse=True)
+        global indexes
+        indexes = []
+        for index, values in enumerate(sorted_index):
+            if index >= num:
+                break
+            indexes.append(values[1][1])
+
+        # print(indexes)
+        # print([val for index, val in enumerate(current_list) if index in indexes])
+
+        for i, line in enumerate([val for index, val in enumerate(current_list) if index in indexes]):
             for index, val in enumerate(line):
                 return_value[index] += val
+
+        for index, val in enumerate(return_value):
+            return_value[index] /= num
         
-        for val in return_value:
-            val /= max_size
-        
-        hand = current_list[0]
+        hand = return_value
 
         global current_pattern
         # print(hand)
         return f'Média & {hand[0]:.3f} & {hand[1]:.3f} & {hand[2]:.3f} & {hand[3]:.3f} & {hand[4]:.3f} \\\\'
 
     previous_index = 0
+    to_print = []
+    really_to_print = []
 
     for index, value in enumerate(out):
-        print(format_print(out[value], index // 4))
+        to_print.append([])
+        to_print[index].append(format_print(out[value], index // 4))
         if previous_index != (index + 1) // 4:
-            print(get_mean(previous_stack[current_pattern]))
+            mean_values = get_mean_2_highest(previous_stack[current_pattern])
             previous_index = (index + 1) // 4
+            
+            global indexes
+            for val in indexes:
+                tt = to_print[val + (index // 4) * 4]
+                print(tt[0])
+            print(mean_values)
         previous_current_pattern = current_pattern
+
+    # for line in to_print:
+    #     print(line)
 
     # print(previous_stack)
 
