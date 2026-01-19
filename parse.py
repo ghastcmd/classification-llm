@@ -29,6 +29,11 @@ def main(root, file='result_printout.txt', n=4*6):
     # print(out.items()['Accuracy'])
     # print(out)
 
+    global previous_current_pattern, previous_stack, current_pattern
+    previous_stack = {'CD': [], 'C': [], 'GD': [], 'G': [], 'PD': [], 'P': []}
+    previous_current_pattern = ''
+    current_pattern = ''
+
     def format_print(value, index):
         # description = ['CD', 'C', 'GD', 'G', 'D', 'P']
         prepend = ''
@@ -50,11 +55,37 @@ def main(root, file='result_printout.txt', n=4*6):
         #     prepend += '2'
         # if 'shuffle_3' in value['format']:
         #     prepend += '3'
+        global current_pattern, previous_stack
+        current_pattern = prepend
+        previous_stack[prepend].append([float(value['Accuracy']), float(value['Precision']), float(value['Recall']), float(value['F1 Macro']), float(value['F1 Weighted'])])
         return f"{prepend} & {float(value['Accuracy']):.3f} & {float(value['Precision']):.3f} & {float(value['Recall']):.3f} & {float(value['F1 Macro']):.3f} & {float(value['F1 Weighted']):.3f} \\\\"
+
+    def get_mean(current_list: list):
+        max_size = len(current_list)
+        return_value = [0, 0, 0, 0, 0]
+        for line in current_list:
+            for index, val in enumerate(line):
+                return_value[index] += val
+        
+        for val in return_value:
+            val /= max_size
+        
+        hand = current_list[0]
+
+        global current_pattern
+        # print(hand)
+        return f'Média & {hand[0]:.3f} & {hand[1]:.3f} & {hand[2]:.3f} & {hand[3]:.3f} & {hand[4]:.3f} \\\\'
+
+    previous_index = 0
 
     for index, value in enumerate(out):
         print(format_print(out[value], index // 4))
-        # print(out[value]['Accuracy'])
+        if previous_index != (index + 1) // 4:
+            print(get_mean(previous_stack[current_pattern]))
+            previous_index = (index + 1) // 4
+        previous_current_pattern = current_pattern
+
+    # print(previous_stack)
 
     print(f"Done. Parsed {len(out)} folders → parsed.json")
 
