@@ -60,7 +60,7 @@ def main(root, file='result_printout.txt', n=4*6):
         previous_stack[prepend].append([float(value['Accuracy']), float(value['Precision']), float(value['Recall']), float(value['F1 Macro']), float(value['F1 Weighted'])])
         return f"{prepend} & {float(value['Accuracy']):.3f} & {float(value['Precision']):.3f} & {float(value['Recall']):.3f} & {float(value['F1 Macro']):.3f} & {float(value['F1 Weighted']):.3f} \\\\"
 
-    def get_mean_2_highest(current_list: list, num = 2):
+    def get_mean_2_highest(current_list: list, num = 4):
         max_size = len(current_list)
         return_value = [0, 0, 0, 0, 0]
         ind_value = {0:[0, 0], 1:[0, 1], 2:[0,2], 3:[0,3]}
